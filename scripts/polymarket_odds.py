@@ -1,0 +1,20 @@
+import requests, sqlite3, json, time
+
+KEYWORDS = ["iran", "oil", "hormuz"]
+URL = "https://gamma-api.polymarket.com/public-search"
+
+conn = sqlite3.connect("polymarket_odds.db")
+conn.execute("CREATE TABLE IF NOT EXISTS odds (ts INTEGER, market TEXT, prob REAL)")
+
+for kw in KEYWORDS:
+    r = requests.get(URL, params={"q": kw, "limit_per_type": 20, "events_status": "active"}, timeout=10)
+    for event in r.json().get("events", []):
+        for m in event.get("markets", []):
+            try:
+                prob = json.loads(m["outcomePrices"])[0]
+            except (KeyError, IndexError, json.JSONDecodeError):
+                continue
+            conn.execute("INSERT INTO odds VALUES (?, ?, ?)", (int(time.time()), m["question"], float(prob)))
+
+conn.commit()
+conn.close()
