@@ -2,9 +2,9 @@
 
 | Date | Symbol | Side | Size | Entry Price | Avg Cost (incl. commission) | Stop (GTC) | Account | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 2026-09-09 | XLE | BUY | 1 share | $65.25 | — | — | DUQ874622 (paper) | First trade — breaks the seal. Closed 2026-09-14, see below. |
+| 2026-09-09 | XLE | BUY | 1 share | $65.25 | — | none at entry; backfilled 2026-09-14 as STP SELL @ $62.61 (orderId 8), later cancelled as orphaned when this position was closed by the test-fill below — see backfill section | DUQ874622 (paper) | First trade — breaks the seal. Closed 2026-09-14, see below. |
 | 2026-09-09 | USO | BUY | 1 share | $148.87 | $149.87 | $142.38 (orderId 10) | DUQ874622 (paper) | Automated via place_order.py |
-| 2026-09-14 | XLE | SELL | 1 share | $66.12 | — | — | DUQ874622 (paper) | Accidental test fill while validating --stop enforcement (used SELL on an existing long instead of a fresh symbol) — closed the original XLE position. Cleaned up immediately, see below. |
+| 2026-09-14 | XLE | SELL | 1 share | $66.12 | — | N/A — closing trade, no remaining position to protect; orphaned the orderId 8 stop above, cancelled during same-session cleanup | DUQ874622 (paper) | Accidental test fill while validating --stop enforcement (used SELL on an existing long instead of a fresh symbol) — closed the original XLE position. Cleaned up immediately, see below. |
 | 2026-09-14 | XLE | BUY | 1 share | $66.17 | $66.8317 | $62.86 (orderId 14) | DUQ874622 (paper) | Position re-established via place_order.py --stop 5 after cleanup |
 | 2026-09-16 | XOM | BUY | 1 share | $168.89 | $169.89 | $160.45 (orderId 20) | DUQ874622 (paper) | score 5.01 — Polymarket: no 24h data yet, Gulf jets 0 (vs 7d avg 9.88, below baseline), GDELT 0 (flat vs avg 0.0), VIX 17.01. Quiet/baseline reading, not an escalation signal. |
 | 2026-09-16 | CVX | BUY | 1 share | $217.55 | $218.55 | $206.67 (orderId 25) | DUQ874622 (paper) | score 5.01 — same breakdown as XOM above (same scoring snapshot) |
