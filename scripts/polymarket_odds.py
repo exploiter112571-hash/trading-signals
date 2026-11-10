@@ -13,6 +13,10 @@ URL = "https://gamma-api.polymarket.com/public-search"
 
 conn = sqlite3.connect("polymarket_odds.db", timeout=30)
 conn.execute("CREATE TABLE IF NOT EXISTS odds (ts INTEGER, market TEXT, prob REAL)")
+# alerts.py looks up each market's latest row; without this index that query
+# rescans the whole table per market (~14 min at 100k rows), overlapping the
+# next 15-min run and causing "database is locked" crashes.
+conn.execute("CREATE INDEX IF NOT EXISTS idx_odds_market_ts ON odds (market, ts)")
 
 for kw in KEYWORDS:
     r = requests.get(URL, params={"q": kw, "limit_per_type": 20, "events_status": "active"}, timeout=10)
