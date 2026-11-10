@@ -44,7 +44,7 @@ Scripts that touch the IB Gateway paper trading API directly. **Trades are never
 
 Independent scripts, most running on their own cron/systemd schedule, that either feed data other pipeline components read or were used for ad-hoc analysis:
 
-- **`macro_fetch.py`** — daily cron. Pulls VIX/S&P/gold/Treasury yields via yfinance, plus 2Y Treasury yield and ICE BofA High Yield credit spread via the FRED API (key read from `~/.fred_api_key`, never hardcoded) into `macro.db`.
+- **`macro_fetch.py`** — hourly cron (incremental: re-fetches from the last stored day, so missed runs while the PC sleeps are backfilled on the next waking hour). Pulls VIX/S&P/gold/Treasury yields via yfinance, plus 2Y Treasury yield and ICE BofA High Yield credit spread via the FRED API (key read from `~/.fred_api_key`, never hardcoded) into `macro.db`.
 - **`polymarket_odds.py`** — 15-min cron. Separate, older Polymarket keyword tracker (Iran/oil/Hormuz) into `polymarket_odds.db`, paired with `alerts.py`.
 - **`alerts.py`** — runs after `polymarket_odds.py` in the same cron line; simple threshold-based console/log alert (not Telegram) over the odds it just fetched.
 - **`opensky_poller.py`**, **`kalshi_poller.py`**, **`polymarket_poller.py`** — continuous background pollers (run as systemd user services, not cron) building long-running historical datasets of global aircraft state vectors, Kalshi markets, and the full Polymarket market catalog respectively. Independent of the Gulf/Hormuz-specific `poller.py`/`scorer.py` above.

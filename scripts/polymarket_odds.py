@@ -1,9 +1,17 @@
-import requests, sqlite3, json, time
+import requests, sqlite3, json, time, sys
+from datetime import datetime
+
+# Timestamp any crash so failures in polymarket_odds.log can be dated.
+_default_hook = sys.excepthook
+def _timestamped_hook(*exc):
+    print(f"--- {datetime.now().isoformat(timespec='seconds')} polymarket_odds.py failed:", file=sys.stderr)
+    _default_hook(*exc)
+sys.excepthook = _timestamped_hook
 
 KEYWORDS = ["iran", "oil", "hormuz"]
 URL = "https://gamma-api.polymarket.com/public-search"
 
-conn = sqlite3.connect("polymarket_odds.db")
+conn = sqlite3.connect("polymarket_odds.db", timeout=30)
 conn.execute("CREATE TABLE IF NOT EXISTS odds (ts INTEGER, market TEXT, prob REAL)")
 
 for kw in KEYWORDS:

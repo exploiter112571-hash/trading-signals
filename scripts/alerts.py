@@ -5,7 +5,7 @@ THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", 0.3))  # score = probability
 logging.basicConfig(filename="/home/roboslayer777/alerts.log", level=logging.INFO,
                      format="%(asctime)s %(message)s")
 
-conn = sqlite3.connect("/home/roboslayer777/polymarket_odds.db")
+conn = sqlite3.connect("/home/roboslayer777/polymarket_odds.db", timeout=30)
 latest = conn.execute("""
     SELECT market, prob FROM odds o
     WHERE ts = (SELECT MAX(ts) FROM odds WHERE market = o.market)

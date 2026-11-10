@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import date, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -40,8 +40,11 @@ def last_date(conn: sqlite3.Connection, ticker: str) -> str | None:
     return row[0]
 
 def fetch_ticker(conn: sqlite3.Connection, ticker: str) -> int:
+    # Re-fetch the last stored day (not last+1): with hourly runs a bar saved
+    # mid-session is partial, and INSERT OR REPLACE overwrites it with the
+    # final values. Also avoids yfinance's "start date after end date" error
+    # when the job runs before the next trading day exists.
     start = last_date(conn, ticker)
-    start = (date.fromisoformat(start) + timedelta(days=1)).isoformat() if start else None
 
     df = yf.Ticker(ticker).history(start=start, interval="1d", auto_adjust=False)
     if df.empty:
@@ -66,8 +69,7 @@ def last_fred_date(conn: sqlite3.Connection, series_id: str) -> str | None:
     return row[0]
 
 def fetch_fred_series(conn: sqlite3.Connection, series_id: str, api_key: str) -> int:
-    start = last_fred_date(conn, series_id)
-    start = (date.fromisoformat(start) + timedelta(days=1)).isoformat() if start else "1900-01-01"
+    start = last_fred_date(conn, series_id) or "1900-01-01"
 
     resp = requests.get(
         FRED_URL,
@@ -98,7 +100,8 @@ def fetch_fred_series(conn: sqlite3.Connection, series_id: str, api_key: str) ->
     return len(rows)
 
 def main() -> None:
-    conn = sqlite3.connect(DB_PATH)
+    print(f"--- {datetime.now().isoformat(timespec='seconds')}")
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute(SCHEMA)
     conn.execute(FRED_SCHEMA)
 
