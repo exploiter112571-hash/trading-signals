@@ -1,0 +1,13 @@
+[Unit]
+Description=opensky_poller (continuous background poller)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=%h/.venv/bin/python %h/opensky_poller.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

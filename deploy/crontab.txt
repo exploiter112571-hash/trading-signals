@@ -1,0 +1,6 @@
+# Live crontab for the trading-signals pipeline (user roboslayer777).
+# Install: crontab deploy/crontab.txt   (replaces the existing user crontab)
+*/15 * * * * /home/roboslayer777/.venv/bin/python /home/roboslayer777/polymarket_odds.py >> /home/roboslayer777/polymarket_odds.log 2>&1 && /home/roboslayer777/.venv/bin/python /home/roboslayer777/alerts.py >> /home/roboslayer777/alerts_stdout.log 2>&1
+17 * * * * /home/roboslayer777/.venv/bin/python /home/roboslayer777/macro_fetch.py >> /home/roboslayer777/macro_fetch.log 2>&1
+*/15 * * * * /home/roboslayer777/.venv/bin/python /home/roboslayer777/pipeline/poller.py >> /home/roboslayer777/pipeline/poller.log 2>&1 && /home/roboslayer777/.venv/bin/python /home/roboslayer777/pipeline/scorer.py >> /home/roboslayer777/pipeline/scorer.log 2>&1
+40 * * * * /usr/sbin/logrotate -s /home/roboslayer777/.config/logrotate/state /home/roboslayer777/.config/logrotate/pipeline.conf

@@ -1,0 +1,52 @@
+diff --git a/src/app/api/flights/route.ts b/src/app/api/flights/route.ts
+index 20fd8ee..0df89bf 100644
+--- a/src/app/api/flights/route.ts
++++ b/src/app/api/flights/route.ts
+@@ -58,7 +58,10 @@ async function fetchRegion(region: typeof REGIONS[0]): Promise<any[]> {
+     const url = `https://api.adsb.lol/v2/lat/${region.lat}/lon/${region.lon}/dist/${region.dist}`;
+     const res = await fetch(url, {
+       signal: AbortSignal.timeout(12000),
+-      headers: { 'Accept': 'application/json' },
++      headers: {
++        'Accept': 'application/json',
++        'User-Agent': 'OSIRIS-local-test/1.0 (+https://github.com/aiacos/osiris)',
++      },
+     });
+     if (res.ok) {
+       const data = await res.json();
+diff --git a/src/app/api/gdelt/route.ts b/src/app/api/gdelt/route.ts
+index 89090c3..294f605 100644
+--- a/src/app/api/gdelt/route.ts
++++ b/src/app/api/gdelt/route.ts
+@@ -49,7 +49,30 @@ const GEO_DICT: Record<string, [number, number]> = {
+   'france': [2.2137, 46.2276],
+   'germany': [10.4515, 51.1657],
+   'uk': [-3.4359, 55.3781],
+-  'mexico': [-102.5528, 23.6345]
++  'mexico': [-102.5528, 23.6345],
++  // Gulf / Strait of Hormuz (local addition for the trading-signals pipeline).
++  // Appended after the generic entries so existing map placements don't change;
++  // these only catch stories that mention none of the places above.
++  'hormuz': [56.25, 26.57],
++  'persian gulf': [51.5, 27.0],
++  'gulf of oman': [57.5, 25.0],
++  'bandar abbas': [56.27, 27.18],
++  'kharg': [50.32, 29.25],
++  'bahrain': [50.56, 26.07],
++  'qatar': [51.18, 25.35],
++  'doha': [51.53, 25.29],
++  'dubai': [55.27, 25.2],
++  'abu dhabi': [54.37, 24.45],
++  'uae': [54.37, 24.45],
++  'emirates': [54.37, 24.45],
++  'oman': [56.7, 24.35],
++  'kuwait': [47.98, 29.37],
++  'aramco': [50.15, 26.64],
++  'ras tanura': [50.15, 26.64],
++  'abqaiq': [49.68, 25.94],
++  'saudi': [46.68, 24.71],
++  'iraq': [44.36, 33.31],
++  'basra': [47.78, 30.51]
+ };
+ 
+ const CONFLICT_KEYWORDS = ['attack', 'strike', 'missile', 'drone', 'war', 'troops', 'military', 'protest', 'riot', 'police', 'clash', 'bomb', 'killed', 'forces'];

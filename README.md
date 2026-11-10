@@ -49,3 +49,16 @@ Independent scripts, most running on their own cron/systemd schedule, that eithe
 - **`alerts.py`** — runs after `polymarket_odds.py` in the same cron line; simple threshold-based console/log alert (not Telegram) over the odds it just fetched.
 - **`opensky_poller.py`**, **`kalshi_poller.py`**, **`polymarket_poller.py`** — continuous background pollers (run as systemd user services, not cron) building long-running historical datasets of global aircraft state vectors, Kalshi markets, and the full Polymarket market catalog respectively. Independent of the Gulf/Hormuz-specific `poller.py`/`scorer.py` above.
 - **`geo_risk_score.py`** — earlier, standalone version of the composite scoring idea (global OpenSky airborne count + Polymarket delta + VIX), superseded by `scorer.py`'s more targeted Gulf/Hormuz-bbox + Osiris-based approach but kept for reference.
+
+## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
+
+Copies of the configuration that lives outside the repo on the host, so the whole setup can be rebuilt:
+
+- **`crontab.txt`** — the live user crontab: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, hourly `macro_fetch.py` (:17), hourly logrotate (:40). Install with `crontab deploy/crontab.txt`.
+- **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24) and the three continuous pollers. Install into `~/.config/systemd/user/`, then `systemctl --user daemon-reload && systemctl --user enable --now <name>`.
+- **`logrotate/pipeline.conf`** — weekly or >10 MB rotation (8 kept, compressed, copytruncate) for the collector and pipeline logs. Copy to `~/.config/logrotate/`; run by the crontab line above with a user state file.
+- **`osiris/osiris-local.patch`** — local changes to the [Osiris](https://github.com/aiacos/osiris) checkout: Gulf/Hormuz place names in the `/api/gdelt` geo-dictionary (without these, Gulf stories never reach the poller) and a User-Agent on `/api/flights`. Apply with `git -C ~/osiris-src apply deploy/osiris/osiris-local.patch`, then `npx next build` and restart `osiris.service`.
+
+Not included on purpose: databases and logs (local data), `.env`/API keys, and the IBC/IB Gateway config (contains broker credentials).
+
+Scripts in `scripts/` are copies of the ones cron/systemd run from `~/`; keep them in sync when editing.
