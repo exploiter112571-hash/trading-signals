@@ -22,6 +22,10 @@ for kw in KEYWORDS:
     r = requests.get(URL, params={"q": kw, "limit_per_type": 20, "events_status": "active"}, timeout=10)
     for event in r.json().get("events", []):
         for m in event.get("markets", []):
+            # Active events still list their already-resolved sub-markets
+            # (e.g. past-dated "ceasefire through July 18?" at 100%); skip them.
+            if m.get("closed"):
+                continue
             try:
                 prob = json.loads(m["outcomePrices"])[0]
             except (KeyError, IndexError, json.JSONDecodeError):
