@@ -13,6 +13,7 @@ ews project (~/ews/.env).
 """
 
 import json
+from datetime import datetime
 import sqlite3
 import time
 from pathlib import Path
@@ -193,6 +194,8 @@ def compute_vix_component():
 
 
 def main():
+    # Run header so failures in the cron log can be dated.
+    print(f"--- {datetime.now().isoformat(timespec='seconds')}", flush=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(SCHEMA)
 

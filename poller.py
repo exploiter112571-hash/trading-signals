@@ -21,6 +21,7 @@ gdelt rows.
 """
 
 import json
+from datetime import datetime
 import re
 import sqlite3
 import time
@@ -141,6 +142,8 @@ def fetch_gdelt_events_in_bbox():
 
 
 def main():
+    # Run header so failures in the cron log can be dated.
+    print(f"--- {datetime.now().isoformat(timespec='seconds')}", flush=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(SCHEMA)
     conn.execute(JETS_SCHEMA)
