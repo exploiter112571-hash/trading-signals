@@ -21,6 +21,7 @@ gdelt rows.
 """
 
 import json
+import re
 import sqlite3
 import time
 
@@ -35,6 +36,15 @@ OSIRIS_BASE_URL = "http://localhost:3000"
 OSIRIS_TIMEOUT_SECONDS = 10
 # Gulf / Strait of Hormuz bounding box
 GULF_BBOX = {"lat_min": 22, "lat_max": 30, "lon_min": 48, "lon_max": 58}
+# Headline terms that make a conflict event Gulf/Hormuz-relevant regardless
+# of where Osiris placed it on the map.
+GULF_TERMS = [
+    "iran", "iranian", "tehran", "irgc", "hormuz", "persian gulf", "gulf of oman",
+    "bandar abbas", "kharg", "bahrain", "qatar", "doha", "uae", "emirates",
+    "dubai", "abu dhabi", "oman", "kuwait", "aramco", "ras tanura", "abqaiq",
+    "basra", "tanker",
+]
+GULF_TERMS_RE = re.compile(r"\b(" + "|".join(re.escape(t) for t in GULF_TERMS) + r")\b", re.I)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS odds (
@@ -110,14 +120,22 @@ def fetch_jets_in_bbox():
     return count
 
 
+def mentions_gulf(text):
+    return GULF_TERMS_RE.search(text or "") is not None
+
+
 def fetch_gdelt_events_in_bbox():
     resp = requests.get(f"{OSIRIS_BASE_URL}/api/gdelt", timeout=OSIRIS_TIMEOUT_SECONDS)
     resp.raise_for_status()
     data = resp.json()
 
+    # Osiris geo-maps each story to one jittered centroid per place name
+    # (e.g. every Iran story lands at ~32.4N, outside GULF_BBOX), so the bbox
+    # test alone never matched anything. Count an event if it either lands in
+    # the bbox or its headline names a Gulf/Hormuz place.
     count = 0
     for event in data.get("events", []):
-        if in_bbox(event.get("lat"), event.get("lng"), GULF_BBOX):
+        if in_bbox(event.get("lat"), event.get("lng"), GULF_BBOX) or mentions_gulf(event.get("name")):
             count += 1
     return count
 

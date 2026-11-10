@@ -28,6 +28,19 @@ ALERT_THRESHOLD = 60
 
 LOOKBACK_DAYS = 7
 DELTA_WINDOW_SECONDS = 24 * 60 * 60
+# The "24h-ago" odds snapshot must be no older than 24h + this slack. Without
+# it, after the machine sleeps for days/weeks the delta silently compares
+# against stale odds from long ago.
+DELTA_MAX_SLACK_SECONDS = 6 * 60 * 60
+# Latest jets/gdelt row must be this fresh, else that component scores 0
+# (protects against scoring a stale reading when Osiris is down).
+MAX_LATEST_AGE_SECONDS = 45 * 60
+# Minimum baseline rows (~4h at 15-min cadence) before a 7-day average is
+# trusted; with gaps in collection a handful of rows makes a noisy baseline.
+MIN_BASELINE_SAMPLES = 16
+# Floor on the baseline average for count data, so a 0 baseline doesn't
+# zero out the component (previously avg 0 -> pct_above forced to 0).
+BASELINE_AVG_FLOOR = 1.0
 
 # --- component point caps ---
 MARKET_DELTA_MAX_POINTS = 35
@@ -101,8 +114,9 @@ def compute_market_delta_component(conn, now_ts):
             (slug, now_ts),
         ).fetchone()
         older = conn.execute(
-            "SELECT yes_probability FROM odds WHERE slug = ? AND ts <= ? ORDER BY ts DESC LIMIT 1",
-            (slug, now_ts - DELTA_WINDOW_SECONDS),
+            "SELECT yes_probability FROM odds WHERE slug = ? AND ts <= ? AND ts >= ? "
+            "ORDER BY ts DESC LIMIT 1",
+            (slug, now_ts - DELTA_WINDOW_SECONDS, now_ts - DELTA_WINDOW_SECONDS - DELTA_MAX_SLACK_SECONDS),
         ).fetchone()
         if newer and older and newer[0] is not None and older[0] is not None:
             deltas.append(newer[0] - older[0])
@@ -125,30 +139,38 @@ def compute_vs_baseline_component(conn, table, value_col, now_ts, full_scale_pct
         return {"raw_latest": None, "raw_avg_7d": None, "points": 0, "note": f"no {label} data"}
 
     latest_ts, latest_value = latest_row
+    if now_ts - latest_ts > MAX_LATEST_AGE_SECONDS:
+        return {
+            "raw_latest": latest_value,
+            "raw_avg_7d": None,
+            "points": 0,
+            "note": f"latest {label} row is stale ({(now_ts - latest_ts) // 60} min old)",
+        }
+
     cutoff = now_ts - LOOKBACK_DAYS * 24 * 60 * 60
     baseline_rows = conn.execute(
         f"SELECT {value_col} FROM {table} WHERE ts >= ? AND ts < ?",
         (cutoff, latest_ts),
     ).fetchall()
 
-    if not baseline_rows:
+    if len(baseline_rows) < MIN_BASELINE_SAMPLES:
         return {
             "raw_latest": latest_value,
             "raw_avg_7d": None,
+            "n_baseline": len(baseline_rows),
             "points": 0,
-            "note": f"no {label} baseline yet (need >7d of history)",
+            "note": f"{label} baseline too thin ({len(baseline_rows)}/{MIN_BASELINE_SAMPLES} rows in last 7d)",
         }
 
     avg_7d = sum(r[0] for r in baseline_rows) / len(baseline_rows)
-    if avg_7d <= 0:
-        pct_above = 0
-    else:
-        pct_above = (latest_value - avg_7d) / avg_7d
+    denom = max(avg_7d, BASELINE_AVG_FLOOR)
+    pct_above = (latest_value - denom) / denom
 
     points = clamp(pct_above / full_scale_pct, 0, 1) * max_points
     return {
         "raw_latest": latest_value,
         "raw_avg_7d": round(avg_7d, 2),
+        "n_baseline": len(baseline_rows),
         "pct_above_avg": round(pct_above, 3),
         "points": round(points, 2),
     }
