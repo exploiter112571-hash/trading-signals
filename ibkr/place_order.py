@@ -44,6 +44,26 @@ def parse_args():
     return parser.parse_args()
 
 
+def tick_for(ib, contract, price):
+    """Price increment the exchange accepts at this price level (from IB's
+    market rules). Falls back to 0.01 if the rule can't be read."""
+    try:
+        details = ib.reqContractDetails(contract)[0]
+        rule_id = int(details.marketRuleIds.split(",")[0])
+        increment = 0.01
+        for rule in ib.reqMarketRule(rule_id):
+            if price >= rule.lowEdge:
+                increment = rule.increment
+        return increment
+    except Exception as exc:
+        print(f"  (could not read market rule, using 0.01 tick: {exc})")
+        return 0.01
+
+
+def round_to_tick(price, tick):
+    return round(round(price / tick) * tick, 10)
+
+
 def main():
     args = parse_args()
     symbol = args.symbol.upper()
@@ -104,21 +124,34 @@ def main():
 
     # A BUY needs a protective SELL stop below the fill; a SELL (short) needs
     # a protective BUY stop above it.
+    # Round to the exchange's tick for this price level -- e.g. LSE uses
+    # 0.2p steps between 200p and 500p, so a plain 2-decimal round (258.78p)
+    # gets the stop rejected and leaves the position unprotected.
     if args.side == "BUY":
-        stop_price = round(fill_price * (1 - args.stop / 100), 2)
+        raw_stop = fill_price * (1 - args.stop / 100)
         stop_action = "SELL"
     else:
-        stop_price = round(fill_price * (1 + args.stop / 100), 2)
+        raw_stop = fill_price * (1 + args.stop / 100)
         stop_action = "BUY"
+    stop_price = round_to_tick(raw_stop, tick_for(ib, contract, raw_stop))
 
     stop_order = StopOrder(stop_action, filled_qty, stop_price)
     stop_order.tif = "GTC"  # explicit -- account presets otherwise silently default to DAY
     stop_trade = ib.placeOrder(contract, stop_order)
-    ib.sleep(2)
+    for _ in range(10):
+        ib.sleep(1)
+        if stop_trade.orderStatus.status in ("PreSubmitted", "Submitted", "Cancelled", "Inactive", "ApiCancelled"):
+            break
 
     print(f"STOP    {stop_action} {filled_qty} {symbol} @ {stop_price} (GTC, {args.stop}% from fill)")
     print(f"  status:  {stop_trade.orderStatus.status}")
     print(f"  orderId: {stop_trade.order.orderId}")
+
+    if stop_trade.orderStatus.status not in ("PreSubmitted", "Submitted"):
+        reasons = "; ".join(l.message for l in stop_trade.log if l.message)
+        print(f"!!! STOP NOT ACCEPTED ({stop_trade.orderStatus.status}) -- POSITION IS UNPROTECTED. {reasons}")
+        ib.disconnect()
+        sys.exit(3)
 
     ib.disconnect()
 

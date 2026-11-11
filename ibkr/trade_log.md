@@ -115,3 +115,23 @@ Fills 2026-11-11 ~16:55 SGT. (IB reported fill times as `00:55+00:00`, i.e. 8 ho
 Pre-trade what-if checks: SHEL, BP., TTE, ENI and RWE accepted; EQNR (Oslo) rejected — no trading permission. No market-data subscription on the paper account, so no live quotes; stops are computed from the actual fill.
 
 **Independent verification** (fresh read-only `ib_insync` positions + `reqAllOpenOrders`, not the script's own output): 4 positions at exactly 1 share, 4 open STP SELL GTC orders, one per position at the prices above. No orphans, no duplicates.
+
+## 2026-11-11 — 7 more European energy names (~17:05 SGT)
+
+Requested while the 22:35 SGT US basket remains scheduled (kept, not cancelled). Score at decision time (17:00 run): **10.16/100** — market_delta 0, jets 0 (baseline rebuilding after the feed fix; latest real reading 80 aircraft), gdelt 8 vs 6.81 avg (3.5 pts), VIX 18.66 (6.66 pts). Quiet, low-signal trades.
+
+What-if pre-checks passed for all seven below; NESTE (Helsinki) failed on a symbol mismatch (IB local symbol NEF) and was dropped as a renewables name anyway. 1 share each, `place_order.py --stop 5`, SMART-routed with primary exchange:
+
+| Symbol | Listing | Fill | Stop (GTC) | Stop orderId |
+|---|---|---|---|---|
+| REP | BME Madrid, EUR | €29.27 | €27.81 | 59 |
+| GALP | Euronext Lisbon, EUR | €18.865 | €17.92 | 64 |
+| OMV | Vienna, EUR | €71.00 | €67.45 | 69 |
+| HBR | LSE, GBP (pence) | 272.4p | **258.8p** (see below) | **93** |
+| TEN | Borsa Italiana, EUR | €27.35 | €25.98 | 79 |
+| SPM | Borsa Italiana, EUR | €4.343 | €4.13 | 84 |
+| VK | Euronext Paris, EUR | €19.685 | €18.70 | 89 |
+
+**Incident — HBR briefly unprotected.** The script's stop for HBR (258.78p, orderId 74) was rejected: LSE trades HBR in 0.2p increments between 200p and 500p, and the script rounded stops to 2 decimals. The independent verification caught it (11 positions, 10 stops). A valid GTC stop at 258.8p (orderId 93) was attached manually within minutes. Fixed in `place_order.py`: stops are now rounded to the instrument's IB market-rule tick, and the script exits non-zero with a loud warning if a stop isn't accepted.
+
+**Independent verification after the fix:** 11 positions (SHEL, BP., TTE, ENI + the 7 above), 11 STP SELL GTC orders, exactly one per position. No orphans, no duplicates.
