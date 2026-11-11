@@ -5,7 +5,7 @@ Monitor-and-alert pipeline for Gulf/Hormuz geopolitical risk. **This does not pl
 ## Components
 
 - **`poller.py`** — runs every 15 minutes via cron. Fetches:
-  - Polymarket (Iran/Hormuz/oil/OPEC/Israel/nuclear-related markets) → `odds` table
+  - Polymarket (Iran/Hormuz/oil/OPEC/Israel/nuclear-related markets, whole-word keyword match over the top 500 open markets by 24h volume, fetched as 5 pages of 100 — ~50 tracked markets) → `odds` table
   - A local [Osiris](https://github.com/aiacos/osiris) instance's `/api/flights` (Gulf/Hormuz bounding box aircraft count) → `jets` table
   - Osiris `/api/gdelt` (conflict-related events in the same bounding box) → `gdelt` table
   - Osiris fetches are best-effort: if Osiris is down, the failure is logged and skipped without affecting the Polymarket fetch.
@@ -49,6 +49,27 @@ Independent scripts, most running on their own cron/systemd schedule, that eithe
 - **`alerts.py`** — runs after `polymarket_odds.py` in the same cron line; simple threshold-based console/log alert (not Telegram) over the odds it just fetched.
 - **`opensky_poller.py`**, **`kalshi_poller.py`**, **`polymarket_poller.py`** — continuous background pollers (run as systemd user services, not cron) building long-running historical datasets of global aircraft state vectors, Kalshi markets, and the full Polymarket market catalog respectively. Independent of the Gulf/Hormuz-specific `poller.py`/`scorer.py` above.
 - **`geo_risk_score.py`** — earlier, standalone version of the composite scoring idea (global OpenSky airborne count + Polymarket delta + VIX), superseded by `scorer.py`'s more targeted Gulf/Hormuz-bbox + Osiris-based approach but kept for reference.
+
+## Data sources and what uses them
+
+Snapshot as of 2026-11-11. Only the first group feeds the score; several collectors store data that nothing reads yet.
+
+| Source | Collector | Store | Size / coverage | Used by |
+|---|---|---|---|---|
+| Polymarket — Gulf/oil/Iran/Israel markets | `poller.py` (15 min) | `signals.db` `odds` | ~50 markets | `scorer.py` (market-delta component) |
+| Osiris `/api/flights` (adsb.lol) | `poller.py` | `signals.db` `jets` | Gulf bbox aircraft count | `scorer.py` (jets) |
+| Osiris `/api/gdelt` (news RSS) | `poller.py` | `signals.db` `gdelt` | Gulf conflict headlines | `scorer.py` (gdelt) |
+| VIX (yfinance, live) | `scorer.py` | — | — | `scorer.py` (vix) |
+| Polymarket keyword search (iran/oil/hormuz) | `scripts/polymarket_odds.py` (15 min) | `~/polymarket_odds.db` | ~270 open markets | `scripts/alerts.py` (log-only alerts) |
+| Polymarket full catalog | `scripts/polymarket_poller.py` (hourly, systemd) | `~/polymarket_markets.db` | ~195k markets/snapshot, 2.7 GB | nothing yet |
+| Kalshi full catalog | `scripts/kalshi_poller.py` (systemd) | `~/kalshi_markets.db` | ~173k markets/snapshot, 8.2 GB; mostly elections/sports, little Gulf/oil coverage | nothing yet |
+| OpenSky global state vectors | `scripts/opensky_poller.py` (systemd) | `~/opensky_states.db` | global aircraft | `geo_risk_score.py` (legacy) only |
+| yfinance: VIX, S&P 500, gold, 10Y/30Y yields | `scripts/macro_fetch.py` (hourly) | `~/macro.db` `prices` | daily bars | nothing yet |
+| FRED: `DGS2` (2Y Treasury), `BAMLH0A0HYM2` (HY credit spread) | `scripts/macro_fetch.py` (hourly; key in `~/.fred_api_key`, 0600) | `~/macro.db` `fred_series` | DGS2 since 1976, HY OAS since 2023; ~1–2 day publication lag | nothing yet |
+
+**IBKR is not connected to any of these.** Only `ibkr/place_order.py` and `ibkr/balance.py` talk to IB Gateway (paper, port 4002), and neither is run by cron or systemd. Every trade is a manual decision; the score informs it but never triggers it. Executions placed by `place_order.py` show `clientId=4` in IB's execution records.
+
+Known gaps / candidate improvements: the Israel next-PM markets match the "israel" keyword but are domestic politics, diluting the market-delta component; Kalshi and FRED (e.g. the HY credit spread as a second stress gauge beside VIX) are collected but unused; collection pauses whenever the host PC sleeps (GTC stops live at IBKR and are unaffected).
 
 ## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
 
