@@ -4,11 +4,14 @@ GTC stop-loss. --stop is required -- there is no path to an unprotected
 position through this script.
 
 Usage:
-    python3 place_order.py SYMBOL QTY [BUY|SELL] --stop PERCENT
+    python3 place_order.py SYMBOL QTY [BUY|SELL] --stop PERCENT [--exchange EX --currency CUR]
 
 Example:
     python3 place_order.py XLE 1 BUY --stop 5
     (buys 1 share of XLE, then places a GTC stop-sell 5% below the fill price)
+
+    python3 place_order.py SHEL 1 BUY --stop 5 --exchange LSE --currency GBP
+    (non-US listing: route to the home exchange in its local currency)
 """
 
 import argparse
@@ -34,6 +37,10 @@ def parse_args():
         required=True,
         help="Stop-loss distance from fill price, in percent (e.g. 5 for 5%%). Required.",
     )
+    parser.add_argument("--exchange", default="SMART",
+                        help="Primary listing exchange (default SMART for US; e.g. LSE, SBF, BVME, IBIS). Orders are always SMART-routed.")
+    parser.add_argument("--currency", default="USD",
+                        help="Listing currency (default USD; e.g. GBP, EUR).")
     return parser.parse_args()
 
 
@@ -44,12 +51,23 @@ def main():
     ib = IB()
     ib.connect(HOST, PORT, clientId=4, timeout=15)
 
-    contract = Stock(symbol, "SMART", "USD")
-    ib.qualifyContracts(contract)
+    # Always SMART-route; a named exchange is passed as the primary listing.
+    # Direct-routing to e.g. LSE is rejected by the Gateway's precautionary
+    # settings (Error 10311 -> "Order was discarded").
+    exchange = args.exchange.upper()
+    if exchange == "SMART":
+        contract = Stock(symbol, "SMART", args.currency.upper())
+    else:
+        contract = Stock(symbol, "SMART", args.currency.upper(), primaryExchange=exchange)
+    if not ib.qualifyContracts(contract):
+        print(f"Unknown contract: {symbol} on {args.exchange} in {args.currency}")
+        ib.disconnect()
+        sys.exit(1)
 
     from ib_insync import MarketOrder
 
     order = MarketOrder(args.side, args.qty)
+    order.tif = "DAY"  # explicit -- avoids the 10349 "TIF set by preset" warning
     trade = ib.placeOrder(contract, order)
 
     for _ in range(FILL_TIMEOUT_SECONDS):
@@ -78,7 +96,7 @@ def main():
     filled_qty = trade.orderStatus.filled
     fill = trade.fills[-1]
     fill_price = trade.orderStatus.avgFillPrice or fill.execution.avgPrice
-    print(f"FILLED  {args.side} {args.qty} {symbol}")
+    print(f"FILLED  {args.side} {args.qty} {symbol} ({contract.primaryExchange or contract.exchange}, {contract.currency})")
     print(f"  price:   {fill_price}")
     print(f"  shares:  {fill.execution.shares}")
     print(f"  time:    {fill.execution.time}")

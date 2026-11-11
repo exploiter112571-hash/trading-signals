@@ -80,3 +80,38 @@ Unlike the 2026-09-16 batch (flat/quiet, score 5.01), this is a **real elevated 
 Basket: 7 new energy/oil names not overlapping any current holding — EOG, DVN, KMI, WMB, BKR, FANG, PSX (spanning E&P, midstream/pipelines, oilfield services, refining), 1 share each, all via `place_order.py --stop 5`.
 
 Given the unexplained disappearance of COP/OXY discovered earlier in this same session, every fill was independently re-verified via a fresh `ib_insync` positions + `reqAllOpenOrders` query before being logged here (not just trusting the script's own printed FILLED output). All 7 confirmed: each at exactly 1 share with exactly one GTC stop order. Account-wide total after this batch: 16 positions, 16 open stop orders — exact 1:1 match, no orphans, no duplicates.
+
+## 2026-11-11 — paper account found reset; 4-trade European energy basket
+
+**Account reset.** Before trading, a read-only check of `DUQ874622` showed **0 positions, 0 open orders, and no history at all** — `reqExecutions`, `reqCompletedOrders(apiOnly=False)` and `portfolio()` are all empty. The 16 positions/16 stops recorded on 2026-09-17 are gone with no fills or stop-outs, consistent with an IBKR paper-account reset rather than trading activity. NLV ~$1,012,314. Earlier sections are left as written.
+
+**Live score at decision time** (16:45 SGT run):
+
+```
+Score: 10.44/100
+  market_delta: -0.0062 avg 24h delta across 27 markets (points: 0)
+  jets:  latest=0, 7d avg=44.76 (points: 0)   <- feed broken, see below
+  gdelt: latest=8, 7d avg=6.76, +18.3% (points: 3.67)
+  vix:   18.77 (points: 6.77)
+```
+
+Quiet reading, well below the 60 threshold — these are low-signal trades placed on request, not a response to an escalation. The jets reading of 0 was a **data failure**, not a real lull: adsb.lol began rejecting radii above 250 NM (HTTP 403), so every Osiris region failed and `/api/flights` returned 0 aircraft from 2026-11-10 22:00. Fixed the same session (see `deploy/osiris/osiris-local.patch`); jets history was cleared so the 7-day baseline rebuilds on the new coverage.
+
+**Why Europe.** Requested at ~16:50 SGT with the US market closed. London/Paris/Milan were open, so the basket is four European oil & gas majors, 1 share each, all via `place_order.py --stop 5`. A planned 9-share US basket for the 22:35 SGT open was cancelled in favour of this before it placed anything.
+
+| Symbol | Listing | Fill | Stop (GTC, 5%) | Stop orderId |
+|---|---|---|---|---|
+| SHEL | LSE, GBP (quoted in pence) | 3659.9998p | 3477.0p | 39 |
+| BP. | LSE, GBP (quoted in pence) | 562.0p | 533.9p | 44 |
+| TTE | Euronext Paris (SBF), EUR | €79.18 | €75.22 | 49 |
+| ENI | Borsa Italiana (BVME), EUR | €24.915 | €23.67 | 54 |
+
+Fills 2026-11-11 ~16:55 SGT. (IB reported fill times as `00:55+00:00`, i.e. 8 hours behind actual UTC — a paper-environment timestamp quirk, noted rather than corrected.) `avgCost` in `positions()` includes commission (e.g. BP. £5.62 + ~£3).
+
+**Script changes made to get here** (`place_order.py`):
+1. *Safety fix:* an unfilled market order used to be left live after the 30s timeout, so it could fill later with no stop. It is now cancelled; any partial fill gets a stop sized to the filled quantity. Tested with the US market closed (XLE, 1 share): cancelled cleanly, nothing left open.
+2. Added `--exchange` (primary listing) and `--currency` for non-US stocks. The first attempt direct-routed to LSE/SBF/BVME and all four were rejected by the Gateway's precautionary settings (Error 10311, "Order was discarded") — no fills. Switched to SMART routing with `primaryExchange`, after which all four filled.
+
+Pre-trade what-if checks: SHEL, BP., TTE, ENI and RWE accepted; EQNR (Oslo) rejected — no trading permission. No market-data subscription on the paper account, so no live quotes; stops are computed from the actual fill.
+
+**Independent verification** (fresh read-only `ib_insync` positions + `reqAllOpenOrders`, not the script's own output): 4 positions at exactly 1 share, 4 open STP SELL GTC orders, one per position at the prices above. No orphans, no duplicates.
