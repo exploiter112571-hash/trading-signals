@@ -1,8 +1,35 @@
 diff --git a/src/app/api/flights/route.ts b/src/app/api/flights/route.ts
-index 20fd8ee..0df89bf 100644
+index 20fd8ee..0e41ce0 100644
 --- a/src/app/api/flights/route.ts
 +++ b/src/app/api/flights/route.ts
-@@ -58,7 +58,10 @@ async function fetchRegion(region: typeof REGIONS[0]): Promise<any[]> {
+@@ -7,6 +7,11 @@ import { NextResponse } from 'next/server';
+  * Covers 6 global regions for maximum coverage
+  */
+ 
++// adsb.lol rejects any radius above 250 NM with HTTP 403 "radius exceeds
++// 250 NM" (enforced from ~2026-11-10; the old 2000-2500 NM regions all failed
++// and the endpoint returned 0 aircraft). Every region is clamped to this.
++const MAX_RADIUS_NM = 250;
++
+ const REGIONS = [
+   { lat: 39.8, lon: -98.5, dist: 2000 },   // North America
+   { lat: 50.0, lon: 15.0, dist: 2000 },     // Europe
+@@ -14,7 +19,13 @@ const REGIONS = [
+   { lat: -25.0, lon: 133.0, dist: 2000 },   // Australia
+   { lat: 0.0, lon: 20.0, dist: 2500 },      // Africa
+   { lat: -15.0, lon: -60.0, dist: 2000 },   // South America
+-];
++  // Gulf / Strait of Hormuz (local addition for the trading-signals pipeline):
++  // four 250 NM tiles that fully cover lat 22-30, lon 48-58.
++  { lat: 24.0, lon: 50.5, dist: 250 },
++  { lat: 28.0, lon: 50.5, dist: 250 },
++  { lat: 24.0, lon: 55.5, dist: 250 },
++  { lat: 28.0, lon: 55.5, dist: 250 },
++].map(r => ({ ...r, dist: Math.min(r.dist, MAX_RADIUS_NM) }));
+ 
+ // Helicopter type codes
+ const HELI_TYPES = new Set([
+@@ -58,12 +69,18 @@ async function fetchRegion(region: typeof REGIONS[0]): Promise<any[]> {
      const url = `https://api.adsb.lol/v2/lat/${region.lat}/lon/${region.lon}/dist/${region.dist}`;
      const res = await fetch(url, {
        signal: AbortSignal.timeout(12000),
@@ -14,6 +41,14 @@ index 20fd8ee..0df89bf 100644
      });
      if (res.ok) {
        const data = await res.json();
+       return data.ac || [];
+     }
++    // Previously non-OK responses were dropped silently, which hid the
++    // 250 NM limit change entirely.
++    console.warn(`Region fetch HTTP ${res.status} for lat=${region.lat} lon=${region.lon}: ${(await res.text()).slice(0, 120)}`);
+   } catch (e) {
+     console.warn(`Region fetch failed for lat=${region.lat}:`, e);
+   }
 diff --git a/src/app/api/gdelt/route.ts b/src/app/api/gdelt/route.ts
 index 89090c3..294f605 100644
 --- a/src/app/api/gdelt/route.ts
