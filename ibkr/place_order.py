@@ -59,12 +59,25 @@ def main():
 
     if trade.orderStatus.status != "Filled":
         print(f"Order not filled after {FILL_TIMEOUT_SECONDS}s -- status: {trade.orderStatus.status}")
-        print("No stop-loss placed since there is no filled position to protect.")
-        ib.disconnect()
-        sys.exit(1)
+        # Cancel the still-working market order. Leaving it live (e.g. when the
+        # market is closed) would let it fill later with no stop attached --
+        # exactly the unprotected position this script exists to prevent.
+        ib.cancelOrder(order)
+        for _ in range(10):
+            ib.sleep(1)
+            if trade.orderStatus.status in ("Cancelled", "ApiCancelled", "Filled"):
+                break
+        if trade.orderStatus.filled <= 0:
+            print(f"Unfilled order cancelled (status: {trade.orderStatus.status}). No position, no stop needed.")
+            ib.disconnect()
+            sys.exit(1)
+        # Fully or partially filled during the cancel window: fall through and
+        # attach a stop sized to the shares actually filled.
+        print(f"{trade.orderStatus.filled} share(s) filled before cancel -- attaching stop to those.")
 
+    filled_qty = trade.orderStatus.filled
     fill = trade.fills[-1]
-    fill_price = fill.execution.avgPrice
+    fill_price = trade.orderStatus.avgFillPrice or fill.execution.avgPrice
     print(f"FILLED  {args.side} {args.qty} {symbol}")
     print(f"  price:   {fill_price}")
     print(f"  shares:  {fill.execution.shares}")
@@ -80,12 +93,12 @@ def main():
         stop_price = round(fill_price * (1 + args.stop / 100), 2)
         stop_action = "BUY"
 
-    stop_order = StopOrder(stop_action, args.qty, stop_price)
+    stop_order = StopOrder(stop_action, filled_qty, stop_price)
     stop_order.tif = "GTC"  # explicit -- account presets otherwise silently default to DAY
     stop_trade = ib.placeOrder(contract, stop_order)
     ib.sleep(2)
 
-    print(f"STOP    {stop_action} {args.qty} {symbol} @ {stop_price} (GTC, {args.stop}% from fill)")
+    print(f"STOP    {stop_action} {filled_qty} {symbol} @ {stop_price} (GTC, {args.stop}% from fill)")
     print(f"  status:  {stop_trade.orderStatus.status}")
     print(f"  orderId: {stop_trade.order.orderId}")
 
