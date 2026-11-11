@@ -32,6 +32,16 @@ GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 DB_PATH = "/home/roboslayer777/pipeline/signals.db"
 REQUEST_TIMEOUT_SECONDS = 15
 KEYWORDS = ["iran", "hormuz", "oil", "opec", "israel", "nuclear"]
+# Whole-word match (plus common adjective forms): plain substring matching
+# also caught sports markets like "Flyers vs. Oilers".
+KEYWORDS_RE = re.compile(
+    r"\b(" + "|".join(KEYWORDS + ["iranian", "israeli"]) + r")\b", re.I
+)
+# Gamma caps each /markets response at 100 rows regardless of `limit`, so
+# the old limit=200 single request only ever saw the top 100 by 24h volume
+# (11 tracked markets on 2026-11-11). Page through the top PAGES*100.
+PAGE_SIZE = 100
+PAGES = 5
 
 OSIRIS_BASE_URL = "http://localhost:3000"
 OSIRIS_TIMEOUT_SECONDS = 10
@@ -72,23 +82,34 @@ CREATE TABLE IF NOT EXISTS gdelt (
 
 
 def matches_keywords(question):
-    text = (question or "").lower()
-    return any(keyword in text for keyword in KEYWORDS)
+    return KEYWORDS_RE.search(question or "") is not None
 
 
 def fetch_markets():
-    response = requests.get(
-        GAMMA_URL,
-        params={
-            "closed": "false",
-            "limit": 200,
-            "order": "volume24hr",
-            "ascending": "false",
-        },
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    return response.json()
+    markets = []
+    seen = set()
+    for page in range(PAGES):
+        response = requests.get(
+            GAMMA_URL,
+            params={
+                "closed": "false",
+                "limit": PAGE_SIZE,
+                "offset": page * PAGE_SIZE,
+                "order": "volume24hr",
+                "ascending": "false",
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        batch = response.json()
+        for market in batch:
+            key = market.get("id") or market.get("slug")
+            if key not in seen:  # rankings can shift between page requests
+                seen.add(key)
+                markets.append(market)
+        if len(batch) < PAGE_SIZE:
+            break
+    return markets
 
 
 def extract_yes_probability(market):
