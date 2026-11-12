@@ -4,7 +4,10 @@ GTC stop-loss. --stop is required -- there is no path to an unprotected
 position through this script.
 
 Usage:
-    python3 place_order.py SYMBOL QTY [BUY|SELL] --stop PERCENT [--exchange EX --currency CUR]
+    python3 place_order.py SYMBOL QTY [BUY|SELL] --stop PERCENT [--exchange EX --currency CUR] [--allow-outside-rth]
+
+Refuses to place (exit 2) outside the exchange's regular session unless
+--allow-outside-rth is given.
 
 Example:
     python3 place_order.py XLE 1 BUY --stop 5
@@ -16,6 +19,7 @@ Example:
 
 import argparse
 import sys
+from datetime import datetime, timezone
 
 from ib_insync import IB, StopOrder, Stock
 
@@ -41,6 +45,9 @@ def parse_args():
                         help="Primary listing exchange (default SMART for US; e.g. LSE, SBF, BVME, IBIS). Orders are always SMART-routed.")
     parser.add_argument("--currency", default="USD",
                         help="Listing currency (default USD; e.g. GBP, EUR).")
+    parser.add_argument("--allow-outside-rth", action="store_true",
+                        help="Allow placing outside the exchange's regular session "
+                             "(default: refuse, so a delayed/woken scheduler can't fill pre-market).")
     return parser.parse_args()
 
 
@@ -58,6 +65,20 @@ def tick_for(ib, contract, price):
     except Exception as exc:
         print(f"  (could not read market rule, using 0.01 tick: {exc})")
         return 0.01
+
+
+def in_regular_session(ib, contract):
+    """True if now is inside the contract's regular (liquid) session, per IB's
+    liquidHours in the exchange's own timezone. Returns (bool, description)."""
+    details = ib.reqContractDetails(contract)[0]
+    now = datetime.now(timezone.utc)
+    sessions = details.liquidSessions()
+    for sess in sessions:
+        if sess.start <= now < sess.end:
+            return True, f"open {sess.start:%H:%M}-{sess.end:%H:%M} {details.timeZoneId}"
+    upcoming = [s for s in sessions if s.start > now]
+    nxt = f"next session {upcoming[0].start:%Y-%m-%d %H:%M} {details.timeZoneId}" if upcoming else "no upcoming session listed"
+    return False, nxt
 
 
 def round_to_tick(price, tick):
@@ -84,10 +105,27 @@ def main():
         ib.disconnect()
         sys.exit(1)
 
+    # Regular-hours guard. On 2026-11-12 a scheduled basket ran on PC wake at
+    # 07:02 ET and filled pre-market on Cboe BYX; refuse that by default.
+    if not args.allow_outside_rth:
+        try:
+            is_open, info = in_regular_session(ib, contract)
+        except Exception as exc:
+            print(f"Could not read trading hours ({exc}); refusing. Use --allow-outside-rth to override.")
+            ib.disconnect()
+            sys.exit(2)
+        if not is_open:
+            print(f"Market for {symbol} is outside regular hours ({info}). Not placing. "
+                  f"Use --allow-outside-rth to override.")
+            ib.disconnect()
+            sys.exit(2)
+        print(f"Regular session check: {info}")
+
     from ib_insync import MarketOrder
 
     order = MarketOrder(args.side, args.qty)
     order.tif = "DAY"  # explicit -- avoids the 10349 "TIF set by preset" warning
+    order.outsideRth = bool(args.allow_outside_rth)
     trade = ib.placeOrder(contract, order)
 
     for _ in range(FILL_TIMEOUT_SECONDS):
