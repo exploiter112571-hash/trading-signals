@@ -135,3 +135,37 @@ What-if pre-checks passed for all seven below; NESTE (Helsinki) failed on a symb
 **Incident — HBR briefly unprotected.** The script's stop for HBR (258.78p, orderId 74) was rejected: LSE trades HBR in 0.2p increments between 200p and 500p, and the script rounded stops to 2 decimals. The independent verification caught it (11 positions, 10 stops). A valid GTC stop at 258.8p (orderId 93) was attached manually within minutes. Fixed in `place_order.py`: stops are now rounded to the instrument's IB market-rule tick, and the script exits non-zero with a loud warning if a stop isn't accepted.
 
 **Independent verification after the fix:** 11 positions (SHEL, BP., TTE, ENI + the 7 above), 11 STP SELL GTC orders, exactly one per position. No orphans, no duplicates.
+
+## 2026-11-12 — 9-share US energy basket (planned for 22:35 SGT on 11-11; actually placed 20:01 SGT on 11-12, pre-market)
+
+**Timing deviation.** The basket was scheduled by a waiting script for 2026-11-11 22:35 SGT (09:35 ET, just after the US open), with the instruction to keep it and never cancel it. The host PC slept from ~22:00 SGT on 11-11 (apart from a brief wake ~01:00) until ~20:00 SGT on 11-12. The script's only condition was "now ≥ 22:35", so on wake it placed the orders immediately — at **07:02 ET, in the US pre-market**, not at the open. All nine market orders filled on **Cboe BYX** (early-session venue), so fills are pre-market prices with thinner liquidity than regular hours. The scheduler should have had a "still inside regular hours" check; any future scheduled basket needs one.
+
+**Score at placement** (last stored run before the sleep, 2026-11-11 22:00 SGT — the pipeline had not yet run after waking):
+
+```
+Score: 9.41/100
+  market_delta: -0.007 avg across 28 markets (points: 0)
+  jets:  latest=103, baseline rebuilding (13/16 rows) (points: 0)
+  gdelt: latest=8, 7d avg=6.95, +15.1% (points: 3.02)
+  vix:   18.39 (points: 6.39)
+```
+
+Quiet reading; low-signal trades placed on request, not on a signal.
+
+1 share each via `place_order.py --stop 5` (stops tick-rounded; US tick 0.01):
+
+| Symbol | Fill (USD) | Stop (GTC, 5%) | Stop orderId |
+|---|---|---|---|
+| XOM | 167.48 | 159.11 | 100 |
+| CVX | 214.80 | 204.06 | 106 |
+| HAL | 33.55 | 31.87 | 112 |
+| VLO | 372.58 | 353.95 | 118 |
+| MPC | 405.00 | 384.75 | 124 |
+| BNO | 58.64 | 55.71 | 130 |
+| UNG | 10.29 | 9.78 | 136 |
+| XLE | 63.64 | 60.46 | 142 |
+| USO | 141.09 | 134.04 | 148 |
+
+One transient Gateway connectivity blip during XOM (Error 1100 → 1102, "data maintained"); the order still filled normally. Execution records show the correct UTC time (12:02Z) for these fills, unlike the 8-hour-shifted timestamps on the 11-11 European fills.
+
+**Independent verification** (fresh read-only positions + `reqAllOpenOrders`): **20 positions, 20 STP SELL GTC orders**, exactly one per position — the 11 European names from 11-11 plus these 9. No orphans, no duplicates, no other open orders. All 11 European stops survived the overnight sleep untouched (GTC stops live at IBKR, not on the host).
