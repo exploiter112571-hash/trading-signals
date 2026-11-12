@@ -71,10 +71,15 @@ Snapshot as of 2026-11-11. Only the first group feeds the score; several collect
 
 Known gaps / candidate improvements: the Israel next-PM markets match the "israel" keyword but are domestic politics, diluting the market-delta component; Kalshi and FRED (e.g. the HY credit spread as a second stress gauge beside VIX) are collected but unused; collection pauses whenever the host PC sleeps (GTC stops live at IBKR and are unaffected).
 
+## data/ — CSV snapshot of collected data
+
+`./export_data.sh` exports the pipeline's data to `data/` (timestamp in `data/EXPORTED_AT`): composite scores with full component breakdown (`scores.csv`), Gulf jet counts, GDELT event counts, the pipeline's Polymarket odds, the standalone Polymarket odds history, macro prices and FRED series. The live `.db` files stay out of git; the Kalshi (~10 GB) and Polymarket market dumps (~3 GB) are far above GitHub's 100 MB file limit and are not exported. Snapshots are only as fresh as the last export + commit.
+
 ## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
 
 Copies of the configuration that lives outside the repo on the host, so the whole setup can be rebuilt:
 
+- **`systemd/ibgateway.service`** — runs IB Gateway headless via IBC (`~/ibc`, not in git: its config holds broker login).
 - **`crontab.txt`** — the live user crontab: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, hourly `macro_fetch.py` (:17), hourly logrotate (:40). Install with `crontab deploy/crontab.txt`.
 - **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24) and the three continuous pollers. Install into `~/.config/systemd/user/`, then `systemctl --user daemon-reload && systemctl --user enable --now <name>`.
 - **`logrotate/pipeline.conf`** — weekly or >10 MB rotation (8 kept, compressed, copytruncate) for the collector and pipeline logs. Copy to `~/.config/logrotate/`; run by the crontab line above with a user state file.

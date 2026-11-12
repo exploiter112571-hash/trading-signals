@@ -1,0 +1,12 @@
+[Unit]
+Description=IB Gateway (via IBC, headless, paper trading)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/ibc/start_headless.sh
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target
