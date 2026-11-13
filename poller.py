@@ -3,9 +3,9 @@
 plus (best-effort) local Osiris routes for Gulf/Hormuz jet and conflict-news
 activity, and log everything to SQLite.
 
-Polymarket: GET https://gamma-api.polymarket.com/markets?closed=false&limit=200
-&order=volume24hr&ascending=false, filters client-side to markets whose
-question contains any of the tracked keywords (case-insensitive).
+Polymarket: GET https://gamma-api.polymarket.com/markets (closed=false, sorted
+by volume24hr, 5 pages x 100 via offset), filtered client-side to markets
+whose question contains a tracked keyword as a whole word (case-insensitive).
 
 Osiris (http://localhost:3000): GET /api/flights and /api/gdelt. These are
 optional/local -- if Osiris isn't running, both fetches log a warning and

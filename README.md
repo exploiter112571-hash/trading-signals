@@ -75,6 +75,8 @@ Known gaps / candidate improvements: the Israel next-PM markets match the "israe
 
 `./export_data.sh` exports the pipeline's data to `data/` (timestamp in `data/EXPORTED_AT`): composite scores with full component breakdown (`scores.csv`), Gulf jet counts, GDELT event counts, the pipeline's Polymarket odds, the standalone Polymarket odds history, macro prices and FRED series. The live `.db` files stay out of git; the Kalshi (~10 GB) and Polymarket market dumps (~3 GB) are far above GitHub's 100 MB file limit and are not exported. Snapshots are only as fresh as the last export + commit.
 
+See [`docs/CODE_WALKTHROUGH.md`](docs/CODE_WALKTHROUGH.md) for a function-by-function explanation of `poller.py` and `scorer.py`.
+
 ## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
 
 Copies of the configuration that lives outside the repo on the host, so the whole setup can be rebuilt:
