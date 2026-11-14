@@ -77,6 +77,7 @@ Known gaps / candidate improvements: the Israel next-PM markets match the "israe
 
 See [`docs/CODE_WALKTHROUGH.md`](docs/CODE_WALKTHROUGH.md) for a function-by-function explanation of `poller.py` and `scorer.py`.
 See [`docs/DEVELOPMENT_HISTORY.md`](docs/DEVELOPMENT_HISTORY.md) for how the repo evolved commit by commit.
+See [`docs/KNOWN_RISKS.md`](docs/KNOWN_RISKS.md) for the system's known flaws and risks.
 
 ## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
 
