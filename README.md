@@ -75,6 +75,8 @@ Known gaps / candidate improvements: the Israel next-PM markets match the "israe
 
 `./export_data.sh` exports the pipeline's data to `data/` (timestamp in `data/EXPORTED_AT`): composite scores with full component breakdown (`scores.csv`), Gulf jet counts, GDELT event counts, the pipeline's Polymarket odds, the standalone Polymarket odds history, macro prices and FRED series. The live `.db` files stay out of git; the Kalshi (~10 GB) and Polymarket market dumps (~3 GB) are far above GitHub's 100 MB file limit and are not exported. Snapshots are only as fresh as the last export + commit.
 
+**Fresh clone:** `signals.db` is gitignored, so a new checkout starts empty: market_delta has no 24h-old odds and jets/gdelt have no 7-day baseline. Run `python3 import_data.py` once to seed `signals.db` from `data/` (pure Python, no `sqlite3` CLI needed; safe to re-run). The baselines then work right away. market_delta pairs odds 24–30 h old, so it only benefits if the snapshot was exported within that window; otherwise it fills in after a day of polling.
+
 See [`docs/CODE_WALKTHROUGH.md`](docs/CODE_WALKTHROUGH.md) for a function-by-function explanation of `poller.py` and `scorer.py`.
 See [`docs/DEVELOPMENT_HISTORY.md`](docs/DEVELOPMENT_HISTORY.md) for how the repo evolved commit by commit.
 See [`docs/KNOWN_RISKS.md`](docs/KNOWN_RISKS.md) for the system's known flaws and risks.
