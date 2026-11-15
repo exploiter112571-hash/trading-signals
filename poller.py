@@ -44,7 +44,12 @@ PAGE_SIZE = 100
 PAGES = 5
 
 OSIRIS_BASE_URL = "http://localhost:3000"
-OSIRIS_TIMEOUT_SECONDS = 10
+# Osiris /api/flights fans out to adsb.lol regions in parallel with a 12s
+# per-region timeout, and its 45s cache is always cold at our 15-min cadence,
+# so a cold call routinely exceeds 10s. Wait longer, and retry once: the
+# retry usually hits the cache the first (abandoned) request populated.
+OSIRIS_TIMEOUT_SECONDS = 30
+OSIRIS_RETRIES = 1
 # Gulf / Strait of Hormuz bounding box
 GULF_BBOX = {"lat_min": 22, "lat_max": 30, "lon_min": 48, "lon_max": 58}
 # Headline terms that make a conflict event Gulf/Hormuz-relevant regardless
@@ -122,6 +127,18 @@ def extract_yes_probability(market):
         return None
 
 
+def osiris_get(path):
+    last_exc = None
+    for _ in range(OSIRIS_RETRIES + 1):
+        try:
+            resp = requests.get(f"{OSIRIS_BASE_URL}{path}", timeout=OSIRIS_TIMEOUT_SECONDS)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            last_exc = exc
+    raise last_exc
+
+
 def in_bbox(lat, lon, bbox):
     try:
         return bbox["lat_min"] <= lat <= bbox["lat_max"] and bbox["lon_min"] <= lon <= bbox["lon_max"]
@@ -130,9 +147,7 @@ def in_bbox(lat, lon, bbox):
 
 
 def fetch_jets_in_bbox():
-    resp = requests.get(f"{OSIRIS_BASE_URL}/api/flights", timeout=OSIRIS_TIMEOUT_SECONDS)
-    resp.raise_for_status()
-    data = resp.json()
+    data = osiris_get("/api/flights")
 
     count = 0
     for key in ("commercial_flights", "private_flights", "private_jets", "military_flights"):
@@ -147,9 +162,7 @@ def mentions_gulf(text):
 
 
 def fetch_gdelt_events_in_bbox():
-    resp = requests.get(f"{OSIRIS_BASE_URL}/api/gdelt", timeout=OSIRIS_TIMEOUT_SECONDS)
-    resp.raise_for_status()
-    data = resp.json()
+    data = osiris_get("/api/gdelt")
 
     # Osiris geo-maps each story to one jittered centroid per place name
     # (e.g. every Iran story lands at ~32.4N, outside GULF_BBOX), so the bbox
