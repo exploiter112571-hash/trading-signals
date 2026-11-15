@@ -91,14 +91,20 @@ def send_telegram_message(text):
     token, channel = load_telegram_credentials()
     if not token or not channel:
         print("Telegram credentials not found in ~/ews/.env -- skipping alert send.")
-        return
-    resp = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": channel, "text": text},
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
+        return False
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": channel, "text": text},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        print(f"Telegram send failed: {exc}")
+        return False
     if not resp.ok:
         print(f"Telegram send failed: {resp.status_code} {resp.text}")
+        return False
+    return True
 
 
 # --- component: prediction-market 24h delta ---
@@ -252,8 +258,10 @@ def main():
         lines.append(
             f"VIX: {vix_component.get('raw_vix')} ({vix_component['points']}/{VIX_MAX_POINTS} pts)"
         )
-        send_telegram_message("\n".join(lines))
-        print("Score >= threshold, Telegram alert sent.")
+        if send_telegram_message("\n".join(lines)):
+            print("Score >= threshold, Telegram alert sent.")
+        else:
+            print("Score >= threshold, but Telegram alert was NOT sent (see above).")
 
 
 if __name__ == "__main__":
