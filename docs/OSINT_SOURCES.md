@@ -10,8 +10,40 @@ and which further sources are worth adding.
 [bilawalsidhu/gods-eye-view](https://github.com/bilawalsidhu/gods-eye-view)
 (MIT code; each data source keeps its own terms, see its `DATA_SOURCES.md`) is
 a browser 3D globe of live satellites, flights, vessels, cameras and events.
-Its UI is not used here. Two of its data feeds were adopted directly into
-`poller.py`, re-implemented in Python (no code copied):
+### The app, running locally
+
+God's Eye View runs as a local service next to Osiris:
+
+- Installed at `~/gods-eye-view` (upstream clone, `npm ci`, no keys needed).
+- Unit file: `deploy/systemd/gods-eye-view.service`. Install with
+  `cp deploy/systemd/gods-eye-view.service ~/.config/systemd/user/ && systemctl --user enable --now gods-eye-view`.
+- Open **http://localhost:4173** in a Windows browser (WSL forwards
+  localhost) to see the Gulf live: flights, military traffic, GNSS
+  integrity, news/conflicts, satellites. Use it to check by eye what a score
+  spike is made of. It binds to localhost only (upstream default).
+- Optional keys (AISStream for vessels, NASA FIRMS for fires, Cesium/Google
+  for 3D) go in `~/gods-eye-view/.env` or the in-app POWER UP panel.
+- Update: `cd ~/gods-eye-view && git pull && npm ci && systemctl --user restart gods-eye-view`.
+
+The pipeline also reads from the running app:
+
+| Table | Source | What it adds |
+| --- | --- | --- |
+| `gnss` | `localhost:4173/api/gnss-integrity` at four 250 NM anchors covering the Gulf box | Share of Gulf aircraft whose reported NIC/NACp falls below the ADS-B Out minima (God's Eye View's gpsjam-style rule; not validated against known events). A proxy for GPS jamming/spoofing, which tends to rise with military activity. |
+
+`gnss` runs as a shadow component compared with its own 7-day average, not
+gpsjam's fixed 2%/10% bands, because the Gulf has chronic GPS interference.
+If the app is down the poller skips the row; nothing else is affected.
+
+Note: the app and the poller both call adsb.lol from this IP. With the app
+open in a browser for long stretches, adsb.lol may answer the poller with
+HTTP 429 now and then; those polls just skip `mil_jets`.
+
+### Feeds re-implemented in the poller
+
+Two of its data feeds were also adopted directly into `poller.py`,
+re-implemented in Python (no code copied), so they don't depend on the app
+running:
 
 | Table | Source | What it fixes |
 | --- | --- | --- |
@@ -40,8 +72,6 @@ Also in God's Eye View and worth adding later:
 
 - **AISStream.io** live AIS vessels (free key): tanker traffic through
   Hormuz is probably a better shipping-risk signal than aircraft counts.
-- **adsb.lol GNSS integrity** (aircraft-reported NIC/NACp): GPS jamming
-  over the Gulf is a known tension indicator.
 - **S2 Underground GhostMaps**: Iran and Yemen intel KMZ products.
 - **USGS earthquakes**: separates a quake near Iranian nuclear sites from
   an explosion story.
@@ -68,4 +98,4 @@ automatically; most have no free API.
 | [Overhead24](https://overhead24.com) (Geospatial) | Military satellites over conflict areas; context only. |
 
 Suggested order: UCDP as backtest ground truth, then AISStream tanker counts
-in the Strait, then adsb.lol GNSS integrity for GPS jamming.
+in the Strait (add the key to God's Eye View and read its `/api/vessels`).

@@ -25,6 +25,8 @@ see docs/OSINT_SOURCES.md), each best-effort and independent of Osiris:
     bbox or action country, with CAMEO conflict counts and exact timestamps.
     `poller.py --backfill-gdelt 7` fills a 7-day baseline in one go.
   - mil_jets: adsb.lol /v2/mil military aircraft in GULF_BBOX.
+  - gnss: GPS-integrity degradation (jamming/spoofing proxy) over the Gulf,
+    read from the locally running God's Eye View app (localhost:4173).
 """
 
 import argparse
@@ -114,6 +116,24 @@ GULF_FIPS = {"IR", "BA", "QA", "AE", "MU", "KU"}
 ADSB_MIL_URL = "https://api.adsb.lol/v2/mil"
 ADSB_TIMEOUT_SECONDS = 20
 USER_AGENT = "trading-signals-pipeline/1.0"
+
+# God's Eye View app itself, run locally (deploy/systemd/gods-eye-view.service).
+# Its /api/gnss-integrity proxies adsb.lol and flags each aircraft whose
+# reported NIC/NACp falls below the ADS-B Out minima (GEV's gpsjam-style
+# rule) -- i.e. likely GPS jamming/spoofing. Anchors are whole degrees with a
+# 250 NM radius; these four cover GULF_BBOX (same tiling as the Osiris patch).
+GEV_BASE_URL = "http://localhost:4173"
+GEV_TIMEOUT_SECONDS = 30
+GEV_GNSS_ANCHORS = [(24, 51), (28, 51), (24, 56), (28, 56)]
+
+GNSS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS gnss (
+    ts INTEGER NOT NULL,
+    aircraft INTEGER,        -- distinct aircraft in GULF_BBOX with integrity fields
+    degraded INTEGER,        -- flagged by GEV's NIC/NACp rule
+    degraded_pct REAL        -- gpsjam.org formula: 100 * max(0, degraded - 1) / aircraft
+)
+"""
 
 GDELT_V2_SCHEMA = """
 CREATE TABLE IF NOT EXISTS gdelt_v2 (
@@ -324,6 +344,23 @@ def fetch_mil_jets():
     return gulf, len(aircraft)
 
 
+def fetch_gnss_integrity():
+    aircraft = {}
+    for lat, lon in GEV_GNSS_ANCHORS:
+        resp = requests.get(
+            f"{GEV_BASE_URL}/api/gnss-integrity", params={"lat": lat, "lon": lon}, timeout=GEV_TIMEOUT_SECONDS
+        )
+        resp.raise_for_status()
+        for row in resp.json().get("rows") or []:
+            if in_bbox(row.get("lat"), row.get("lon"), GULF_BBOX):
+                aircraft[row.get("hex")] = bool(row.get("degraded"))
+    if not aircraft:
+        raise ValueError("God's Eye View returned no aircraft in the Gulf bbox")
+    total = len(aircraft)
+    degraded = sum(aircraft.values())
+    return total, degraded, round(100 * max(0, degraded - 1) / total, 2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--backfill-gdelt", type=int, metavar="DAYS",
@@ -338,6 +375,7 @@ def main():
     conn.execute(GDELT_SCHEMA)
     conn.execute(GDELT_V2_SCHEMA)
     conn.execute(MIL_JETS_SCHEMA)
+    conn.execute(GNSS_SCHEMA)
 
     if args.backfill_gdelt:
         backfill_gdelt_v2(conn, args.backfill_gdelt)
@@ -396,6 +434,17 @@ def main():
         print(f"mil_jets: {gulf} military aircraft in Gulf bbox ({total} worldwide)")
     except Exception as exc:
         print(f"adsb.lol /v2/mil unavailable, skipping mil_jets row: {exc}")
+
+    # --- God's Eye View GNSS integrity (local app): best-effort ---
+    try:
+        total, degraded, pct = fetch_gnss_integrity()
+        conn.execute(
+            "INSERT INTO gnss (ts, aircraft, degraded, degraded_pct) VALUES (?, ?, ?, ?)", (ts, total, degraded, pct)
+        )
+        conn.commit()
+        print(f"gnss: {degraded}/{total} Gulf aircraft with degraded GPS integrity ({pct}%)")
+    except Exception as exc:
+        print(f"God's Eye View /api/gnss-integrity unavailable, skipping gnss row: {exc}")
 
     conn.close()
 

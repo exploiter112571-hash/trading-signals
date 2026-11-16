@@ -261,6 +261,15 @@ def compute_shadow_components(conn, now_ts):
         )
     except sqlite3.OperationalError as exc:
         shadow["mil_jets"] = {"points": 0, "note": f"mil_jets unavailable: {exc}"}
+    try:
+        # Relative to the 7-day average rather than gpsjam's fixed 2%/10%
+        # bands: the Gulf has chronic GPS interference, so a fixed band
+        # would read "high" permanently.
+        shadow["gnss"] = compute_vs_baseline_component(
+            conn, "gnss", "degraded_pct", now_ts, JETS_FULL_SCALE_PCT, JETS_MAX_POINTS, "gnss"
+        )
+    except sqlite3.OperationalError as exc:
+        shadow["gnss"] = {"points": 0, "note": f"gnss unavailable: {exc}"}
     return shadow
 
 

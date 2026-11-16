@@ -1,0 +1,17 @@
+[Unit]
+Description=God's Eye View (local 3D OSINT globe; visual cross-check for the pipeline's Gulf signals)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/gods-eye-view
+# Upstream runs the Vite server in every mode (its Docker image does too).
+# Binds localhost:4173 only (upstream default); see its SECURITY.md before
+# exposing it on the LAN. Optional keys go in %h/gods-eye-view/.env.
+Environment=PATH=/home/roboslayer777/.nvm/versions/node/v24.19.0/bin:/usr/bin:/bin
+ExecStart=/home/roboslayer777/.nvm/versions/node/v24.19.0/bin/node %h/gods-eye-view/node_modules/vite/bin/vite.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
