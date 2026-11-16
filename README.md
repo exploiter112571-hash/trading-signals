@@ -85,15 +85,39 @@ See [`docs/KNOWN_RISKS.md`](docs/KNOWN_RISKS.md) for the system's known flaws an
 
 ## deploy/ — machine setup (cron, services, log rotation, Osiris patch)
 
-Copies of the configuration that lives outside the repo on the host, so the whole setup can be rebuilt:
+Templates for the configuration that lives outside the repo, so the whole setup can be rebuilt on any Linux/WSL machine. Nothing in the repo names a specific user or home directory.
 
+### Running on another machine
+
+```bash
+git clone https://github.com/exploiter112571-hash/trading-signals.git && cd trading-signals
+python3 -m venv ~/.venv && ~/.venv/bin/pip install requests yfinance
+python3 import_data.py                 # seed signals.db from the data/ snapshot
+~/.venv/bin/python poller.py --backfill-gdelt 7
+cp .env.example .env                   # optional: Telegram bot token + channel
+deploy/install.sh                      # fill in this machine's paths into deploy/build/ (review)
+deploy/install.sh --apply              # install crontab, logrotate, systemd units
+```
+
+Paths are resolved at run time, so the repo can live anywhere:
+
+- `poller.py`, `scorer.py`, `scripts/backtest.py`: `signals.db` next to the code, or `$SIGNALS_DB`.
+- `scripts/*` collectors: `.db`/`.log` files in `$PIPELINE_DATA_DIR` (default: your home directory).
+- Telegram: `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHANNEL` from the environment, else this repo's `.env`, else `~/ews/.env`.
+- `deploy/install.sh` fills `@PIPELINE_DIR@`, `@DATA_DIR@`, `@PYTHON@` (default `~/.venv/bin/python`), `@NODE@` (the `node` on PATH; Node 24) and `@HOME@` into the templates. Override any with env vars, e.g. `PYTHON=/usr/bin/python3 deploy/install.sh`.
+
+Optional services need their own setup first: Osiris (`~/osiris-src`, see the patch below), God's Eye View (`~/gods-eye-view`, see [docs/OSINT_SOURCES.md](docs/OSINT_SOURCES.md)) and IB Gateway (`~/ibc`).
+
+### Files
+
+- **`install.sh`** — renders the templates below for this machine into `deploy/build/` (gitignored); `--apply` installs them (backs up the current crontab first). Services are installed but not enabled.
 - **`systemd/ibgateway.service`** — runs IB Gateway headless via IBC (`~/ibc`, not in git: its config holds broker login).
-- **`crontab.txt`** — the live user crontab: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, hourly `macro_fetch.py` (:17), hourly logrotate (:40). Install with `crontab deploy/crontab.txt`.
-- **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24) and the three continuous pollers. Install into `~/.config/systemd/user/`, then `systemctl --user daemon-reload && systemctl --user enable --now <name>`.
-- **`logrotate/pipeline.conf`** — weekly or >10 MB rotation (8 kept, compressed, copytruncate) for the collector and pipeline logs. Copy to `~/.config/logrotate/`; run by the crontab line above with a user state file.
+- **`crontab.txt`** — crontab template: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, hourly `macro_fetch.py` (:17), hourly logrotate (:40).
+- **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24), God's Eye View (Vite, port 4173) and the three continuous pollers. After `install.sh --apply`: `systemctl --user enable --now <name>`.
+- **`logrotate/pipeline.conf`** — weekly or >10 MB rotation (8 kept, compressed, copytruncate) for the collector and pipeline logs; run by the crontab line above with a user state file.
 - **`start-wsl-ibgateway.vbs`** — Windows login launcher (copy into `shell:startup`). Starts the Ubuntu WSL distro hidden and holds it open with `sleep infinity`, so systemd (linger on) brings up cron, IB Gateway, Osiris and the pollers without a terminal open and WSL never idle-shuts-down. It cannot prevent Windows itself from sleeping.
 - **`osiris/osiris-local.patch`** — local changes to the [Osiris](https://github.com/aiacos/osiris) checkout: Gulf/Hormuz place names in the `/api/gdelt` geo-dictionary (without these, Gulf stories never reach the poller) and, on `/api/flights`, a User-Agent plus a 250 NM radius cap (adsb.lol's limit; larger radii now return 403 and the feed silently went to 0 aircraft on 2026-11-10) and four Gulf/Hormuz tiles covering the jets bounding box. Apply with `git -C ~/osiris-src apply deploy/osiris/osiris-local.patch`, then `npx next build` and restart `osiris.service`.
 
 Not included on purpose: databases and logs (local data), `.env`/API keys, and the IBC/IB Gateway config (contains broker credentials).
 
-Scripts in `scripts/` are copies of the ones cron/systemd run from `~/`; keep them in sync when editing.
+The templates run the collectors straight from `scripts/`. On the original machine, cron/systemd still run older copies from `~/`; there, keep them in sync when editing, or switch over with `deploy/install.sh --apply`.

@@ -12,12 +12,17 @@ Adjust WEIGHTS and LOOKBACK_DAYS to taste; they don't need to sum to 1 (the
 final score is reported both raw and as a 0-1 fraction of max possible).
 """
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-OPENSKY_DB = "/home/roboslayer777/opensky_states.db"
-POLYMARKET_DB = "/home/roboslayer777/polymarket_odds.db"
-MACRO_DB = "/home/roboslayer777/macro.db"
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
+
+OPENSKY_DB = DATA_DIR / "opensky_states.db"
+POLYMARKET_DB = DATA_DIR / "polymarket_odds.db"
+MACRO_DB = DATA_DIR / "macro.db"
 
 WEIGHTS = {"jet": 1 / 3, "delta": 1 / 3, "vix": 1 / 3}
 LOOKBACK_DAYS = 14

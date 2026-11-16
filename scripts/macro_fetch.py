@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -5,8 +6,11 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
+
 TICKERS = ["^VIX", "^GSPC", "GC=F", "^TYX", "^TNX"]
-DB_PATH = "/home/roboslayer777/macro.db"
+DB_PATH = DATA_DIR / "macro.db"
 FRED_API_KEY_PATH = Path.home() / ".fred_api_key"
 FRED_SERIES = {
     "DGS2": "2-Year Treasury yield",

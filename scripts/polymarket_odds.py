@@ -1,5 +1,9 @@
-import requests, sqlite3, json, time, sys
+import requests, sqlite3, json, time, sys, os
 from datetime import datetime
+from pathlib import Path
+
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
 
 # Timestamp any crash so failures in polymarket_odds.log can be dated.
 _default_hook = sys.excepthook
@@ -11,7 +15,7 @@ sys.excepthook = _timestamped_hook
 KEYWORDS = ["iran", "oil", "hormuz"]
 URL = "https://gamma-api.polymarket.com/public-search"
 
-conn = sqlite3.connect("polymarket_odds.db", timeout=30)
+conn = sqlite3.connect(DATA_DIR / "polymarket_odds.db", timeout=30)
 conn.execute("CREATE TABLE IF NOT EXISTS odds (ts INTEGER, market TEXT, prob REAL)")
 # alerts.py looks up each market's latest row; without this index that query
 # rescans the whole table per market (~14 min at 100k rows), overlapping the

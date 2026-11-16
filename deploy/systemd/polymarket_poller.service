@@ -4,8 +4,9 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h
-ExecStart=%h/.venv/bin/python %h/polymarket_poller.py
+WorkingDirectory=@DATA_DIR@
+Environment=PIPELINE_DATA_DIR=@DATA_DIR@
+ExecStart=@PYTHON@ @PIPELINE_DIR@/scripts/polymarket_poller.py
 Restart=always
 RestartSec=30
 

@@ -9,14 +9,19 @@ a global query costs 4 credits, so this polls every 15 minutes
 See https://openskynetwork.github.io/opensky-api/rest.html
 """
 
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
+
 OPENSKY_URL = "https://opensky-network.org/api/states/all"
-DB_PATH = "opensky_states.db"
+DB_PATH = DATA_DIR / "opensky_states.db"
 POLL_INTERVAL_SECONDS = 15 * 60
 REQUEST_TIMEOUT_SECONDS = 20
 

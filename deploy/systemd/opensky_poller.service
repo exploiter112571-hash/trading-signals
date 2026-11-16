@@ -4,8 +4,9 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h
-ExecStart=%h/.venv/bin/python %h/opensky_poller.py
+WorkingDirectory=@DATA_DIR@
+Environment=PIPELINE_DATA_DIR=@DATA_DIR@
+ExecStart=@PYTHON@ @PIPELINE_DIR@/scripts/opensky_poller.py
 Restart=always
 RestartSec=30
 

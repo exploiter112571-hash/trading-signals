@@ -9,14 +9,19 @@ See https://docs.polymarket.com/developers/gamma-markets-api/get-markets
 """
 
 import json
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
+
 GAMMA_URL = "https://gamma-api.polymarket.com/markets/keyset"
-DB_PATH = "polymarket_markets.db"
+DB_PATH = DATA_DIR / "polymarket_markets.db"
 # A full crawl covers 50,000+ active markets (Polymarket generates huge
 # numbers of templated per-state/per-price-level markets, similar in spirit
 # to Kalshi's combination markets) and takes many minutes on its own, so

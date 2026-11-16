@@ -8,11 +8,13 @@
 
 Every run is logged to table `signals` (ts, score, components JSON) in the
 same signals.db. If score >= ALERT_THRESHOLD, sends a Telegram message with
-the full breakdown, reusing the bot credentials already configured for the
-ews project (~/ews/.env).
+the full breakdown. Telegram credentials (TELEGRAM_BOT_TOKEN,
+TELEGRAM_CHANNEL) are read from, first match wins: the environment, this
+repo's .env (see .env.example), then ~/ews/.env.
 """
 
 import json
+import os
 from datetime import datetime
 import sqlite3
 import time
@@ -21,8 +23,10 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
-DB_PATH = "/home/roboslayer777/pipeline/signals.db"
-EWS_ENV_PATH = Path.home() / "ews" / ".env"
+HERE = Path(__file__).resolve().parent
+# signals.db lives next to this file unless SIGNALS_DB points elsewhere.
+DB_PATH = os.environ.get("SIGNALS_DB", str(HERE / "signals.db"))
+TELEGRAM_ENV_FILES = [HERE / ".env", Path.home() / "ews" / ".env"]
 REQUEST_TIMEOUT_SECONDS = 15
 
 ALERT_THRESHOLD = 60
@@ -74,23 +78,33 @@ def clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def read_env_file(path):
+    values = {}
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip()
+    return values
+
+
 def load_telegram_credentials():
-    if not EWS_ENV_PATH.exists():
-        return None, None
-    token = None
-    channel = None
-    for line in EWS_ENV_PATH.read_text().splitlines():
-        if line.startswith("TELEGRAM_BOT_TOKEN="):
-            token = line.split("=", 1)[1].strip()
-        elif line.startswith("TELEGRAM_CHANNEL="):
-            channel = line.split("=", 1)[1].strip()
+    """Token and channel from the environment, else the first env file that sets them."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    channel = os.environ.get("TELEGRAM_CHANNEL")
+    for path in TELEGRAM_ENV_FILES:
+        if token and channel:
+            break
+        values = read_env_file(path)
+        token = token or values.get("TELEGRAM_BOT_TOKEN")
+        channel = channel or values.get("TELEGRAM_CHANNEL")
     return token or None, channel or None
 
 
 def send_telegram_message(text):
     token, channel = load_telegram_credentials()
     if not token or not channel:
-        print("Telegram credentials not found in ~/ews/.env -- skipping alert send.")
+        print("Telegram credentials not set (env vars, pipeline .env or ~/ews/.env) -- skipping alert send.")
         return False
     try:
         resp = requests.post(

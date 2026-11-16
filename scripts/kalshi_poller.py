@@ -12,14 +12,19 @@ markets. Any leftover multivariate events/markets are filtered out
 client-side as a safety net.
 """
 
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
+# Data directory for the .db files (default: home dir; override with PIPELINE_DATA_DIR).
+DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", Path.home()))
+
 KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2/events"
-DB_PATH = "kalshi_markets.db"
+DB_PATH = DATA_DIR / "kalshi_markets.db"
 POLL_INTERVAL_SECONDS = 10 * 60
 REQUEST_TIMEOUT_SECONDS = 15
 PAGE_LIMIT = 200

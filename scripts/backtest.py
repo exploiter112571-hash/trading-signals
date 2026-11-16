@@ -45,9 +45,8 @@ from scorer import (  # noqa: E402
     DELTA_WINDOW_SECONDS,
     MARKET_DELTA_MAX_POINTS,
     compute_market_delta_component,
+    DB_PATH,  # signals.db next to scorer.py, or $SIGNALS_DB
 )
-
-DB_PATH = "/home/roboslayer777/pipeline/signals.db"
 
 
 def replay_stored_signals(conn):

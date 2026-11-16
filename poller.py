@@ -32,7 +32,9 @@ see docs/OSINT_SOURCES.md), each best-effort and independent of Osiris:
 import argparse
 import io
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 import sqlite3
 import time
@@ -41,7 +43,8 @@ import zipfile
 import requests
 
 GAMMA_URL = "https://gamma-api.polymarket.com/markets"
-DB_PATH = "/home/roboslayer777/pipeline/signals.db"
+# signals.db lives next to this file unless SIGNALS_DB points elsewhere.
+DB_PATH = os.environ.get("SIGNALS_DB", str(Path(__file__).resolve().parent / "signals.db"))
 REQUEST_TIMEOUT_SECONDS = 15
 KEYWORDS = ["iran", "hormuz", "oil", "opec", "israel", "nuclear"]
 # Whole-word match (plus common adjective forms): plain substring matching
