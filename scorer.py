@@ -199,6 +199,71 @@ def compute_vix_component():
     return {"raw_vix": round(vix_level, 2), "points": round(points, 2)}
 
 
+# --- shadow components (God's Eye View sources; see docs/OSINT_SOURCES.md) ---
+# Computed and logged with every score so they can be compared against the
+# Osiris-based jets/gdelt components, but their points are NOT added to the
+# score until they have been checked against real data. To switch over, add
+# them to the score sum in main() and drop the components they replace.
+
+# gdelt_v2 compares the last 6h of Gulf material-conflict events with the
+# average 6h total over the past 7 days. 15-min counts alone are mostly 0.
+GDELT_V2_WINDOW_SECONDS = 6 * 60 * 60
+# An export covers the 15 min before it is published, and is polled every
+# 15 min, so the newest export_ts is normally 15-30 min old.
+GDELT_V2_MAX_LATEST_AGE_SECONDS = 60 * 60
+# Minimum exports (~2 days) before the 7-day baseline is trusted.
+GDELT_V2_MIN_BASELINE_EXPORTS = 192
+
+
+def compute_gdelt_v2_component(conn, now_ts):
+    latest = conn.execute("SELECT MAX(export_ts) FROM gdelt_v2").fetchone()[0]
+    if latest is None:
+        return {"points": 0, "note": "no gdelt_v2 data"}
+    if now_ts - latest > GDELT_V2_MAX_LATEST_AGE_SECONDS:
+        return {"points": 0, "note": f"latest gdelt_v2 export is stale ({(now_ts - latest) // 60} min old)"}
+
+    window_start = latest - GDELT_V2_WINDOW_SECONDS
+    recent = conn.execute(
+        "SELECT SUM(gulf_material_conflict), COUNT(*) FROM gdelt_v2 WHERE export_ts > ?", (window_start,)
+    ).fetchone()
+    baseline = conn.execute(
+        "SELECT AVG(gulf_material_conflict), COUNT(*) FROM gdelt_v2 WHERE export_ts > ? AND export_ts <= ?",
+        (now_ts - LOOKBACK_DAYS * 24 * 60 * 60, window_start),
+    ).fetchone()
+    raw_6h = recent[0] or 0
+    if baseline[1] < GDELT_V2_MIN_BASELINE_EXPORTS:
+        return {"raw_6h": raw_6h, "points": 0,
+                "note": f"gdelt_v2 baseline too thin ({baseline[1]}/{GDELT_V2_MIN_BASELINE_EXPORTS} exports)"}
+
+    # Scale the per-export mean to the number of exports actually in the window.
+    avg_6h = baseline[0] * recent[1]
+    denom = max(avg_6h, BASELINE_AVG_FLOOR)
+    pct_above = (raw_6h - denom) / denom
+    points = clamp(pct_above / GDELT_FULL_SCALE_PCT, 0, 1) * GDELT_MAX_POINTS
+    return {
+        "raw_6h": raw_6h,
+        "raw_avg_6h_7d": round(avg_6h, 2),
+        "n_baseline": baseline[1],
+        "pct_above_avg": round(pct_above, 3),
+        "points": round(points, 2),
+    }
+
+
+def compute_shadow_components(conn, now_ts):
+    shadow = {}
+    try:
+        shadow["gdelt_v2"] = compute_gdelt_v2_component(conn, now_ts)
+    except sqlite3.OperationalError as exc:  # table not created yet
+        shadow["gdelt_v2"] = {"points": 0, "note": f"gdelt_v2 unavailable: {exc}"}
+    try:
+        shadow["mil_jets"] = compute_vs_baseline_component(
+            conn, "mil_jets", "gulf_count", now_ts, JETS_FULL_SCALE_PCT, JETS_MAX_POINTS, "mil_jets"
+        )
+    except sqlite3.OperationalError as exc:
+        shadow["mil_jets"] = {"points": 0, "note": f"mil_jets unavailable: {exc}"}
+    return shadow
+
+
 def main():
     # Run header so failures in the cron log can be dated.
     print(f"--- {datetime.now().isoformat(timespec='seconds')}", flush=True)
@@ -229,6 +294,8 @@ def main():
         "jets": jets_component,
         "gdelt": gdelt_component,
         "vix": vix_component,
+        # Logged for comparison only; not part of `score` (see above).
+        "shadow": compute_shadow_components(conn, now_ts),
     }
 
     conn.execute(

@@ -18,13 +18,23 @@ source), so event_count is a live snapshot count of conflict-type events
 in the bounding box at fetch time, not a strict 6h-windowed query. A true
 6h rolling count would need to be computed downstream from our own stored
 gdelt rows.
+
+Direct sources (adopted from God's Eye View, github.com/bilawalsidhu/gods-eye-view;
+see docs/OSINT_SOURCES.md), each best-effort and independent of Osiris:
+  - gdelt_v2: real GDELT 2.0 15-minute event exports, Gulf events by
+    bbox or action country, with CAMEO conflict counts and exact timestamps.
+    `poller.py --backfill-gdelt 7` fills a 7-day baseline in one go.
+  - mil_jets: adsb.lol /v2/mil military aircraft in GULF_BBOX.
 """
 
+import argparse
+import io
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import sqlite3
 import time
+import zipfile
 
 import requests
 
@@ -75,6 +85,51 @@ JETS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS jets (
     ts INTEGER NOT NULL,
     aircraft_count INTEGER
+)
+"""
+
+# --- Direct sources adopted from God's Eye View (github.com/bilawalsidhu/gods-eye-view) ---
+# Real GDELT 2.0: the 15-minute event export files (keyless plain downloads,
+# not the rate-limited search API). Unlike Osiris's RSS geo-mapper these carry
+# CAMEO codes and an exact 15-minute timestamp, and old exports stay online,
+# so a 7-day baseline can be backfilled (see --backfill-gdelt).
+GDELT_V2_BASE = "https://data.gdeltproject.org/gdeltv2/"
+GDELT_STEP_SECONDS = 15 * 60
+GDELT_TIMEOUT_SECONDS = 30
+# Exports caught up per normal poll if earlier polls were missed (2h).
+GDELT_MAX_CATCHUP = 8
+# Events table columns (GDELT 2.0, 61 columns).
+GDELT_COL_ROOT_CODE = 28
+GDELT_COL_QUAD_CLASS = 29
+GDELT_COL_COUNTRY = 53
+GDELT_COL_LAT = 56
+GDELT_COL_LON = 57
+# GDELT places a country-level story at the country centroid (Iran ~32N,
+# outside GULF_BBOX), so also match on the action country (FIPS codes):
+# Iran, Bahrain, Qatar, UAE, Oman, Kuwait.
+GULF_FIPS = {"IR", "BA", "QA", "AE", "MU", "KU"}
+
+# adsb.lol military aircraft feed (the one God's Eye View's military layer
+# uses). Addresses KNOWN_RISKS #3: the Osiris jets count is mostly airliners.
+ADSB_MIL_URL = "https://api.adsb.lol/v2/mil"
+ADSB_TIMEOUT_SECONDS = 20
+USER_AGENT = "trading-signals-pipeline/1.0"
+
+GDELT_V2_SCHEMA = """
+CREATE TABLE IF NOT EXISTS gdelt_v2 (
+    export_ts INTEGER PRIMARY KEY,   -- start of GDELT's 15-min export window (UTC epoch)
+    fetched_ts INTEGER NOT NULL,
+    gulf_events INTEGER,             -- all coded events placed in the Gulf
+    gulf_material_conflict INTEGER,  -- QuadClass 4 (CAMEO roots 14-20): protest .. mass violence
+    gulf_violence INTEGER            -- CAMEO roots 18-20 only (God's Eye View's "Conflicts")
+)
+"""
+
+MIL_JETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS mil_jets (
+    ts INTEGER NOT NULL,
+    gulf_count INTEGER,
+    global_count INTEGER
 )
 """
 
@@ -175,13 +230,119 @@ def fetch_gdelt_events_in_bbox():
     return count
 
 
+def gdelt_export_url(export_ts):
+    stamp = datetime.fromtimestamp(export_ts, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+    return f"{GDELT_V2_BASE}{stamp}.export.CSV.zip"
+
+
+def latest_gdelt_export_ts():
+    resp = requests.get(f"{GDELT_V2_BASE}lastupdate.txt", timeout=GDELT_TIMEOUT_SECONDS)
+    resp.raise_for_status()
+    url = resp.text.split()[2]  # first line: size, md5, export URL
+    stamp = re.search(r"(\d{14})\.export\.CSV\.zip", url).group(1)
+    return int(datetime.strptime(stamp, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc).timestamp())
+
+
+def is_gulf_event(fields):
+    if fields[GDELT_COL_COUNTRY] in GULF_FIPS:
+        return True
+    try:
+        return in_bbox(float(fields[GDELT_COL_LAT]), float(fields[GDELT_COL_LON]), GULF_BBOX)
+    except ValueError:
+        return False
+
+
+def fetch_gdelt_export_counts(export_ts):
+    """Counts for one export, or None if GDELT has no file for that slot (404)."""
+    resp = requests.get(gdelt_export_url(export_ts), timeout=GDELT_TIMEOUT_SECONDS)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        table = zf.read(zf.namelist()[0]).decode("utf-8", "replace")
+    events = conflict = violence = 0
+    for line in table.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 61 or not is_gulf_event(fields):
+            continue
+        events += 1
+        if fields[GDELT_COL_QUAD_CLASS] == "4":
+            conflict += 1
+        if fields[GDELT_COL_ROOT_CODE] in ("18", "19", "20"):
+            violence += 1
+    return events, conflict, violence
+
+
+def store_gdelt_exports(conn, export_ts_list):
+    done = {r[0] for r in conn.execute("SELECT export_ts FROM gdelt_v2")}
+    stored = 0
+    for export_ts in export_ts_list:
+        if export_ts in done:
+            continue
+        counts = fetch_gdelt_export_counts(export_ts)
+        if counts is None:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO gdelt_v2 (export_ts, fetched_ts, gulf_events, gulf_material_conflict, gulf_violence) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (export_ts, int(time.time()), *counts),
+        )
+        conn.commit()
+        stored += 1
+    return stored
+
+
+def poll_gdelt_v2(conn):
+    latest = latest_gdelt_export_ts()
+    last = conn.execute("SELECT MAX(export_ts) FROM gdelt_v2").fetchone()[0]
+    start = latest - (GDELT_MAX_CATCHUP - 1) * GDELT_STEP_SECONDS
+    if last is not None:
+        start = max(start, last + GDELT_STEP_SECONDS)
+    stored = store_gdelt_exports(conn, range(start, latest + 1, GDELT_STEP_SECONDS))
+    row = conn.execute(
+        "SELECT gulf_events, gulf_material_conflict, gulf_violence FROM gdelt_v2 WHERE export_ts = ?", (latest,)
+    ).fetchone()
+    return stored, row
+
+
+def backfill_gdelt_v2(conn, days):
+    latest = latest_gdelt_export_ts()
+    slots = range(latest - days * 86400 + GDELT_STEP_SECONDS, latest + 1, GDELT_STEP_SECONDS)
+    print(f"Backfilling up to {len(slots)} GDELT exports ({days}d)...", flush=True)
+    print(f"gdelt_v2: stored {store_gdelt_exports(conn, slots)} export(s)")
+
+
+def fetch_mil_jets():
+    resp = requests.get(ADSB_MIL_URL, timeout=ADSB_TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT})
+    resp.raise_for_status()
+    aircraft = resp.json().get("ac") or []
+    # An empty worldwide list means the feed is broken, not that the sky is
+    # empty: raise so no misleading 0 row is stored (KNOWN_RISKS #2).
+    if not aircraft:
+        raise ValueError("adsb.lol /v2/mil returned 0 aircraft worldwide")
+    gulf = sum(1 for a in aircraft if in_bbox(a.get("lat"), a.get("lon"), GULF_BBOX))
+    return gulf, len(aircraft)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--backfill-gdelt", type=int, metavar="DAYS",
+                        help="only backfill DAYS of GDELT 2.0 exports into gdelt_v2, then exit")
+    args = parser.parse_args()
+
     # Run header so failures in the cron log can be dated.
     print(f"--- {datetime.now().isoformat(timespec='seconds')}", flush=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(SCHEMA)
     conn.execute(JETS_SCHEMA)
     conn.execute(GDELT_SCHEMA)
+    conn.execute(GDELT_V2_SCHEMA)
+    conn.execute(MIL_JETS_SCHEMA)
+
+    if args.backfill_gdelt:
+        backfill_gdelt_v2(conn, args.backfill_gdelt)
+        conn.close()
+        return
 
     ts = int(time.time())
 
@@ -219,6 +380,22 @@ def main():
         print(f"gdelt: {event_count} conflict event(s) in Gulf/Hormuz bbox")
     except Exception as exc:
         print(f"Osiris /api/gdelt unavailable, skipping gdelt row: {exc}")
+
+    # --- GDELT 2.0 direct: best-effort ---
+    try:
+        stored, row = poll_gdelt_v2(conn)
+        print(f"gdelt_v2: {stored} new export(s); latest Gulf events/conflict/violence = {row}")
+    except Exception as exc:
+        print(f"GDELT 2.0 export unavailable, skipping gdelt_v2: {exc}")
+
+    # --- adsb.lol military: best-effort ---
+    try:
+        gulf, total = fetch_mil_jets()
+        conn.execute("INSERT INTO mil_jets (ts, gulf_count, global_count) VALUES (?, ?, ?)", (ts, gulf, total))
+        conn.commit()
+        print(f"mil_jets: {gulf} military aircraft in Gulf bbox ({total} worldwide)")
+    except Exception as exc:
+        print(f"adsb.lol /v2/mil unavailable, skipping mil_jets row: {exc}")
 
     conn.close()
 
