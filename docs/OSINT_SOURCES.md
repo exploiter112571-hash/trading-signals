@@ -21,8 +21,9 @@ God's Eye View runs as a local service next to Osiris:
   localhost) to see the Gulf live: flights, military traffic, GNSS
   integrity, news/conflicts, satellites. Use it to check by eye what a score
   spike is made of. It binds to localhost only (upstream default).
-- Optional keys (AISStream for vessels, NASA FIRMS for fires, Cesium/Google
-  for 3D) go in `~/gods-eye-view/.env` or the in-app POWER UP panel.
+- Optional keys go in `~/gods-eye-view/.env` (owner-only, gitignored) or the
+  in-app POWER UP panel. Configured here: AISStream (vessels) and NASA FIRMS
+  (fires). Not configured: Cesium ion / Google (photorealistic 3D).
 - Update: `cd ~/gods-eye-view && git pull && npm ci && systemctl --user restart gods-eye-view`.
 
 The pipeline also reads from the running app:
@@ -97,5 +98,11 @@ automatically; most have no free API.
 | [Sentinel Hub](https://www.sentinel-hub.com/explore/sentinelplayground/) (Geospatial) | Satellite imagery to confirm a spike after the fact (e.g. smoke at a refinery). |
 | [Overhead24](https://overhead24.com) (Geospatial) | Military satellites over conflict areas; context only. |
 
-Suggested order: UCDP as backtest ground truth, then AISStream tanker counts
-in the Strait (add the key to God's Eye View and read its `/api/vessels`).
+Suggested order: UCDP as backtest ground truth first.
+
+AISStream tanker counts were tried and rejected (2026-11-16): with a valid
+key, God's Eye View's `/api/vessels` had 12,637 vessels worldwide after warm-up
+but only 5 in the Gulf box, 0 in the Strait and 0 typed as tankers.
+AISStream relies on volunteer shore receivers and has almost none around the
+Gulf, so a count would track receiver gaps, not shipping. A real tanker
+signal needs a satellite-AIS provider (paid).
