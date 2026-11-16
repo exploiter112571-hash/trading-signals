@@ -22,8 +22,9 @@ God's Eye View runs as a local service next to Osiris:
   integrity, news/conflicts, satellites. Use it to check by eye what a score
   spike is made of. It binds to localhost only (upstream default).
 - Optional keys go in `~/gods-eye-view/.env` (owner-only, gitignored) or the
-  in-app POWER UP panel. Configured here: AISStream (vessels) and NASA FIRMS
-  (fires). Not configured: Cesium ion / Google (photorealistic 3D).
+  in-app POWER UP panel. Configured here: AISStream (vessels), NASA FIRMS
+  (fires) and Cesium ion (terrain + Google photorealistic 3D via ion). Not
+  configured: a direct Google Maps key (metered; only needed for place search).
 - Update: `cd ~/gods-eye-view && git pull && npm ci && systemctl --user restart gods-eye-view`.
 
 The pipeline also reads from the running app:
