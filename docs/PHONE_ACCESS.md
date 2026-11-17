@@ -20,15 +20,38 @@ curl -s localhost:8050/healthz        # -> ok
 
 Open http://localhost:8050 in a Windows browser to check it.
 
-Install Tailscale inside WSL (needs your sudo password; run each line yourself,
-or prefix with `!` in Claude Code):
+Install Tailscale inside WSL. Two ways:
+
+**A. Rootless (no sudo; what this machine uses).** Tailscale's static build runs
+as a user service in userspace-networking mode, which is all `tailscale serve`
+needs:
+
+```bash
+V=$(curl -fsSL "https://pkgs.tailscale.com/stable/?mode=json" | python3 -c "import json,sys;print(json.load(sys.stdin)['TarballsVersion'])")
+F=tailscale_${V}_amd64.tgz
+curl -fsSLO https://pkgs.tailscale.com/stable/$F
+echo "$(curl -fsSL https://pkgs.tailscale.com/stable/$F.sha256)  $F" | sha256sum -c
+tar xzf $F && mkdir -p ~/.local/lib/tailscale ~/.local/share/tailscale ~/.local/bin
+cp tailscale_${V}_amd64/tailscale tailscale_${V}_amd64/tailscaled ~/.local/lib/tailscale/
+printf '#!/bin/sh\nexec "$HOME/.local/lib/tailscale/tailscale" --socket="$HOME/.local/share/tailscale/tailscaled.sock" "$@"\n' > ~/.local/bin/tailscale
+chmod 755 ~/.local/bin/tailscale
+deploy/install.sh --apply                  # installs deploy/systemd/tailscaled.service
+systemctl --user enable --now tailscaled
+tailscale up --hostname=gulf-monitor       # prints a login URL; open it, click Connect
+tailscale serve --bg 8050                  # first time: prints a link to enable Serve
+tailscale serve status
+```
+
+To update later, repeat the download/copy lines and `systemctl --user restart tailscaled`.
+
+**B. System package (needs sudo):**
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up                      # prints a login URL; sign in
+sudo tailscale up
 sudo tailscale set --operator=$USER    # lets you run `tailscale serve` without sudo
-tailscale serve --bg 8050              # HTTPS on your tailnet -> 127.0.0.1:8050
-tailscale serve status                 # shows the https://<name>.<tailnet>.ts.net URL
+tailscale serve --bg 8050
+tailscale serve status
 ```
 
 If `tailscale serve` says HTTPS is not enabled for your tailnet, open the link

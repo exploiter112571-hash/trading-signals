@@ -1,0 +1,12 @@
+[Unit]
+Description=Tailscale (rootless, userspace networking) for phone access to the dashboard
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@HOME@/.local/lib/tailscale/tailscaled --tun=userspace-networking --statedir=@HOME@/.local/share/tailscale --socket=@HOME@/.local/share/tailscale/tailscaled.sock --port=0
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
