@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Gulf Risk Monitor</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --border: #e4e3de; --grid: #ecebe6;
+  --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #7a7974;
+  --series: #2a78d6; --series-fill: rgba(42,120,214,.10);
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --chip-bg: #f0efec;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --border: #2c2c2a; --grid: #262624;
+    --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86;
+    --series: #3987e5; --series-fill: rgba(57,135,229,.16); --chip-bg: #2a2a28;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-2); margin: 0 0 10px; }
+.muted { color: var(--ink-3); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; margin-bottom: 14px; }
+.grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+.grid > .card { margin-bottom: 0; min-width: 0; }
+.card { min-width: 0; overflow-wrap: break-word; }
+@media (max-width: 520px) { .wide { display: none; } .meter { grid-template-columns: 92px 1fr 58px; } .hero .num { font-size: 44px; } }
+.hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hero .num { font-size: 52px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
+.hero .of { color: var(--ink-3); font-size: 16px; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px;
+  padding: 3px 10px; border-radius: 99px; background: var(--chip-bg); }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.meters { margin-top: 14px; display: grid; gap: 8px; }
+.meter { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 10px; font-size: 14px; }
+.meter .track { height: 8px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.meter .fill { height: 100%; background: var(--series); border-radius: 4px; }
+.meter .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.shadow { margin-top: 10px; font-size: 13px; color: var(--ink-3); }
+.tabs { display: inline-flex; gap: 4px; background: var(--chip-bg); padding: 3px; border-radius: 8px; }
+.tabs button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px;
+  padding: 4px 10px; border-radius: 6px; cursor: pointer; min-height: 30px; }
+.tabs button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; }
+.chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.chart-head h2 { margin: 0; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 220px; touch-action: pan-y; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page);
+  font-size: 12px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%); display: none; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 12px; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+td { padding: 8px 4px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+  background: var(--chip-bg); color: var(--ink-2); white-space: nowrap; }
+.chip.long { box-shadow: inset 0 0 0 1.5px var(--good); color: var(--ink); }
+.chip.avoid { box-shadow: inset 0 0 0 1.5px var(--serious); color: var(--ink); }
+.chip.hedge { box-shadow: inset 0 0 0 1.5px var(--critical); color: var(--ink); }
+.sub { color: var(--ink-3); font-size: 12px; }
+.news a { color: var(--ink); text-decoration: none; }
+.news a:hover { text-decoration: underline; }
+.news li { padding: 9px 0; border-bottom: 1px solid var(--grid); list-style: none; }
+.news ul { margin: 0; padding: 0; }
+.rel { display: inline-block; min-width: 22px; text-align: center; font-size: 11px; font-weight: 700;
+  border-radius: 5px; padding: 1px 4px; margin-right: 6px; background: var(--chip-bg); color: var(--ink-2); }
+.rel.hot { background: var(--critical); color: #fff; }
+.fresh { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-3); }
+.err { color: var(--critical); font-weight: 600; }
+.disclaimer { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Gulf Risk Monitor</h1>
+    <span class="muted" id="updated">loading…</span>
+  </header>
+
+  <section class="card" id="hero-card">
+    <div class="hero">
+      <div><span class="num" id="score">–</span> <span class="of">/ 100</span></div>
+      <div>
+        <div id="status"></div>
+        <div class="muted" id="delta"></div>
+      </div>
+    </div>
+    <div class="meters" id="meters"></div>
+    <div class="shadow" id="shadow"></div>
+  </section>
+
+  <section class="card">
+    <div class="chart-head">
+      <h2>Composite score</h2>
+      <div class="tabs" role="group" aria-label="Time range">
+        <button data-h="24">24h</button><button data-h="168" aria-pressed="true">7d</button><button data-h="720">30d</button>
+      </div>
+    </div>
+    <div class="chart" id="chart"><svg id="svg" role="img" aria-label="Composite score over time"></svg><div class="tip" id="tip"></div></div>
+  </section>
+
+  <div class="grid two">
+    <section class="card">
+      <h2>Stock picks</h2>
+      <table><thead><tr><th>Ticker</th><th>Action</th><th class="n">Price</th><th class="n">5d</th><th class="n wide">20d</th></tr></thead>
+      <tbody id="picks"></tbody></table>
+      <p class="disclaimer">Rule-based screen from the risk score and price momentum. Not investment advice; places no orders.</p>
+    </section>
+    <section class="card">
+      <h2>Prediction markets</h2>
+      <table><thead><tr><th>Market</th><th class="n">Yes</th><th class="n">24h</th></tr></thead>
+      <tbody id="odds"></tbody></table>
+    </section>
+  </div>
+
+  <section class="card news" style="margin-top:14px">
+    <h2>News</h2>
+    <ul id="news"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Data freshness</h2>
+    <div class="fresh" id="fresh"></div>
+  </section>
+</main>
+<script>
+const MAX = {market_delta: 35, jets: 25, gdelt: 20, vix: 20};
+const LABEL = {market_delta: "Market odds", jets: "Jets", gdelt: "News volume", vix: "VIX"};
+const STALE_S = {signals: 3600, odds: 3600, jets: 3600, gdelt: 3600, gdelt_v2: 3600, mil_jets: 3600,
+  gnss: 3600, news: 3600, stock_picks: 3 * 3600};
+const THRESHOLD = 60;
+let hours = 168, data = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = (v, d = 1) => v == null ? "–" : (v >= 0 ? "+" : "") + (v * 100).toFixed(d) + "%";
+function ago(ts, now) {
+  if (!ts) return "never";
+  const s = now - ts;
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  if (s < 172800) return Math.round(s / 3600) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+}
+function regime(score) {
+  if (score >= THRESHOLD) return {label: "High — alert level", color: "var(--critical)", icon: "▲"};
+  if (score >= 30) return {label: "Elevated", color: "var(--warning)", icon: "●"};
+  return {label: "Calm", color: "var(--good)", icon: "✓"};
+}
+
+function renderHero(d) {
+  const L = d.latest;
+  if (!L) { $("score").textContent = "–"; $("status").innerHTML = '<span class="muted">No score yet — the scorer has not run.</span>'; return; }
+  $("score").textContent = L.score.toFixed(1);
+  const r = regime(L.score);
+  $("status").innerHTML = `<span class="status"><span class="dot" style="background:${r.color}"></span>${r.icon} ${r.label}</span>`;
+  const h = d.history, past = h.filter(p => p[0] <= L.ts - 86400).pop();
+  $("delta").textContent = past ? `${L.score - past[1] >= 0 ? "+" : ""}${(L.score - past[1]).toFixed(1)} vs 24h ago · ` : "";
+  $("delta").innerHTML = esc($("delta").textContent) + (d.now - L.ts > 3600 ? `<span class="err">⚠ scored ${ago(L.ts, d.now)} — data stale</span>` : `scored ${ago(L.ts, d.now)}`);
+  const c = L.components;
+  $("meters").innerHTML = Object.keys(MAX).map(k => {
+    const p = c[k]?.points ?? 0;
+    const note = c[k]?.note ? ` title="${esc(c[k].note)}"` : "";
+    return `<div class="meter"${note}><span>${LABEL[k]}</span><div class="track"><div class="fill" style="width:${Math.max(0, p / MAX[k] * 100)}%"></div></div><span class="v">${p.toFixed(1)} / ${MAX[k]}</span></div>`;
+  }).join("");
+  const sh = c.shadow || {};
+  const parts = Object.entries(sh).map(([k, v]) => `${k} ${v.pct_above_avg != null ? pct(v.pct_above_avg, 0) + " vs 7d" : (v.note ? "(warming up)" : "")}`);
+  $("shadow").textContent = parts.length ? "Shadow signals (logged, not scored): " + parts.join(" · ") : "";
+}
+
+function renderChart(d) {
+  const svg = $("svg"), W = svg.clientWidth || 600, H = 220, pad = {l: 30, r: 10, t: 10, b: 24};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const pts = d.history;
+  if (pts.length < 2) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--ink-3)" font-size="13">Not enough history in this range</text>`; return; }
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  const x = t => pad.l + (t - t0) / Math.max(1, t1 - t0) * (W - pad.l - pad.r);
+  const y = v => pad.t + (1 - v / 100) * (H - pad.t - pad.b);
+  let g = "";
+  for (const v of [0, 25, 50, 75, 100]) g += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${v}</text>`;
+  g += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(THRESHOLD)}" y2="${y(THRESHOLD)}" stroke="var(--critical)" stroke-dasharray="4 4"/><text x="${W - pad.r}" y="${y(THRESHOLD) - 5}" text-anchor="end" font-size="11" fill="var(--ink-2)">alert 60</text>`;
+  const span = t1 - t0, n = Math.min(5, Math.max(2, Math.floor(W / 120)));
+  for (let i = 0; i <= n; i++) {
+    const t = t0 + span * i / n, dt = new Date(t * 1000);
+    const lbl = span <= 2 * 86400 ? dt.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : dt.toLocaleDateString([], {month: "short", day: "numeric"});
+    g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n ? "end" : "middle"}" font-size="11" fill="var(--ink-3)">${lbl}</text>`;
+  }
+  // break the line across gaps > 2h (scorer was down)
+  let path = "", prev = null;
+  for (const [t, v] of pts) { path += (prev == null || t - prev > 7200 ? "M" : "L") + x(t).toFixed(1) + "," + y(v).toFixed(1); prev = t; }
+  pts.forEach(([t, v], i) => { const a = pts[i - 1], b = pts[i + 1]; if ((!a || t - a[0] > 7200) && (!b || b[0] - t > 7200)) g += `<circle cx="${x(t)}" cy="${y(v)}" r="2.5" fill="var(--series)"/>`; });
+  g += `<path d="${path}" fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  g += `<line id="xh" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--ink-3)" visibility="hidden"/><circle id="xd" r="4.5" fill="var(--series)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
+  g += `<rect x="${pad.l}" y="0" width="${W - pad.l - pad.r}" height="${H}" fill="transparent" id="hit"/>`;
+  svg.innerHTML = g;
+  const tip = $("tip"), hit = $("hit");
+  const move = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+    const t = t0 + (px * W / r.width - pad.l) / (W - pad.l - pad.r) * (t1 - t0);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+    const cx = x(best[0]), cy = y(best[1]);
+    for (const id of ["xh", "xd"]) $(id).setAttribute("visibility", "visible");
+    $("xh").setAttribute("x1", cx); $("xh").setAttribute("x2", cx); $("xd").setAttribute("cx", cx); $("xd").setAttribute("cy", cy);
+    tip.style.display = "block"; tip.style.left = (cx * r.width / W) + "px"; tip.style.top = (cy * r.height / H) + "px";
+    tip.textContent = `${best[1].toFixed(1)} · ${new Date(best[0] * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})}`;
+  };
+  const leave = () => { tip.style.display = "none"; for (const id of ["xh", "xd"]) $(id)?.setAttribute("visibility", "hidden"); };
+  hit.addEventListener("mousemove", move); hit.addEventListener("touchmove", move, {passive: true});
+  hit.addEventListener("touchstart", move, {passive: true});
+  hit.addEventListener("mouseleave", leave); hit.addEventListener("touchend", () => setTimeout(leave, 1500));
+}
+
+function renderPicks(d) {
+  if (!d.picks.length) { $("picks").innerHTML = `<tr><td colspan="5" class="muted">No picks yet — stock_picks.py has not run.</td></tr>`; return; }
+  const cls = {"LONG-WATCH": "long", "AVOID": "avoid", "HEDGE-WATCH": "hedge"};
+  $("picks").innerHTML = d.picks.map(p => `<tr title="${esc(p.rationale)}">
+    <td><b>${esc(p.ticker)}</b><div class="sub">${esc(p.name)}</div></td>
+    <td><span class="chip ${cls[p.action] || ""}">${esc(p.action)}</span><div class="sub">${esc(p.rationale)}</div></td>
+    <td class="n">${p.price.toFixed(2)}</td><td class="n">${pct(p.ret_5d)}</td><td class="n wide">${pct(p.ret_20d)}</td></tr>`).join("");
+}
+
+function renderOdds(d) {
+  if (!d.odds.length) { $("odds").innerHTML = `<tr><td colspan="3" class="muted">No market data in the last 2 days.</td></tr>`; return; }
+  $("odds").innerHTML = d.odds.slice(0, 15).map(o => {
+    const ch = o.p_24h == null ? null : o.p - o.p_24h;
+    const chs = ch == null ? "–" : `<span>${ch >= 0 ? "+" : ""}${(ch * 100).toFixed(1)}pt</span>`;
+    return `<tr><td>${esc(o.question)}</td><td class="n">${(o.p * 100).toFixed(0)}%</td><td class="n">${chs}</td></tr>`;
+  }).join("");
+}
+
+function renderNews(d) {
+  if (!d.news.length) { $("news").innerHTML = `<li class="muted">No headlines yet — news.py has not run.</li>`; return; }
+  $("news").innerHTML = d.news.map(n => `<li><span class="rel ${n.relevance >= 6 ? "hot" : ""}" title="relevance">${n.relevance}</span>
+    <a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>
+    <div class="sub">${esc(n.source)} · ${ago(n.published_ts, d.now)}</div></li>`).join("");
+}
+
+function renderFresh(d) {
+  $("fresh").innerHTML = Object.entries(d.freshness).map(([k, ts]) => {
+    const stale = !ts || d.now - ts > (STALE_S[k] || 3600);
+    return `<span>${stale ? '<span class="err">⚠</span> ' : ""}${k}: ${ago(ts, d.now)}</span>`;
+  }).join("");
+}
+
+async function load() {
+  try {
+    const r = await fetch(`api/summary?hours=${hours}`, {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json();
+    renderHero(data); renderChart(data); renderPicks(data); renderOdds(data); renderNews(data); renderFresh(data);
+    $("updated").textContent = "updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  } catch (e) {
+    $("updated").innerHTML = `<span class="err">offline (${esc(e.message)})</span>`;
+  }
+}
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach(o => o.setAttribute("aria-pressed", o === b));
+  hours = +b.dataset.h; load();
+}));
+window.addEventListener("resize", () => data && renderChart(data));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

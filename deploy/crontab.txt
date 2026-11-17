@@ -5,4 +5,6 @@ PIPELINE_DATA_DIR=@DATA_DIR@
 */15 * * * * @PYTHON@ @PIPELINE_DIR@/scripts/polymarket_odds.py >> @DATA_DIR@/polymarket_odds.log 2>&1 && @PYTHON@ @PIPELINE_DIR@/scripts/alerts.py >> @DATA_DIR@/alerts_stdout.log 2>&1
 17 * * * * @PYTHON@ @PIPELINE_DIR@/scripts/macro_fetch.py >> @DATA_DIR@/macro_fetch.log 2>&1
 */15 * * * * @PYTHON@ @PIPELINE_DIR@/poller.py >> @PIPELINE_DIR@/poller.log 2>&1 && @PYTHON@ @PIPELINE_DIR@/scorer.py >> @PIPELINE_DIR@/scorer.log 2>&1
+5,20,35,50 * * * * @PYTHON@ @PIPELINE_DIR@/news.py >> @PIPELINE_DIR@/news.log 2>&1
+25 * * * * @PYTHON@ @PIPELINE_DIR@/stock_picks.py >> @PIPELINE_DIR@/stock_picks.log 2>&1
 40 * * * * /usr/sbin/logrotate -s @HOME@/.config/logrotate/state @HOME@/.config/logrotate/pipeline.conf

@@ -75,6 +75,6 @@ systemctl --user daemon-reload 2>/dev/null || warn "systemctl --user unavailable
 
 echo "Installed. Previous crontab saved to $OUT/crontab.previous"
 echo "Enable the services you need, e.g.:"
-echo "  systemctl --user enable --now osiris gods-eye-view"
+echo "  systemctl --user enable --now dashboard osiris gods-eye-view"
 echo "  systemctl --user enable --now polymarket_poller kalshi_poller opensky_poller"
 echo "  systemctl --user enable --now ibgateway   # needs ~/ibc set up first"

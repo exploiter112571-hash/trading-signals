@@ -18,9 +18,18 @@ Monitor-and-alert pipeline for Gulf/Hormuz geopolitical risk. **This does not pl
 
   Every run is logged to the `signals` table (`ts`, `score`, `components` as JSON). If score >= 60, sends a Telegram message with the full breakdown.
 
+- **`news.py`** — every 15 minutes (:05/:20/:35/:50). Pulls headlines from Google News (one Hormuz/Gulf/Iran/Brent query), BBC Middle East, Al Jazeera and OilPrice.com RSS, scores each title by weighted keywords (Hormuz, tanker, IRGC, missile, Brent, …) and keeps relevant ones in the `news` table (30 days). Context only; not part of the score.
+
+- **`stock_picks.py`** — hourly (:25). A rule-based screen, **not investment advice and never places orders**. Combines the score regime (calm < 30 ≤ elevated < 60 ≤ high) and its 24h trend with each ticker's momentum (5d/20d return, close vs 50-day SMA, via yfinance) over a fixed watchlist:
+  - *beneficiaries* of Gulf risk (XLE, XOM, CVX, OXY, tankers FRO/DHT/INSW/STNG, defense LMT/RTX/NOC/LHX, GLD) → `LONG-WATCH` when risk is elevated or rising and momentum confirms
+  - *exposed* names (JETS, DAL, UAL, CCL, RCL) → `AVOID` while risk is elevated or rising, `HEDGE-WATCH` if also below the 50-day SMA
+  - everything else `NEUTRAL`. Each run is written to `stock_picks` with a one-line rationale; edit `UNIVERSE` to change the watchlist.
+
+- **`dashboard/`** — read-only web UI (standard library only) on `127.0.0.1:8050`: score and components, score history with the alert line, stock picks, Polymarket odds with 24h change, news, and data freshness. Works on a phone; reach it remotely through Tailscale, see [docs/PHONE_ACCESS.md](docs/PHONE_ACCESS.md).
+
 ## Data
 
-`signals.db` (SQLite, gitignored — not checked in) holds four tables: `odds`, `jets`, `gdelt`, `signals`.
+`signals.db` (SQLite, gitignored — not checked in) holds the core tables `odds`, `jets`, `gdelt`, `signals`, plus `gdelt_v2`, `mil_jets`, `gnss` (shadow sources), `news` and `stock_picks`.
 
 ## Setup
 
@@ -30,6 +39,8 @@ Requires a `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL` in a `.env` file (path co
 
 ```
 */15 * * * * python3 poller.py >> poller.log 2>&1 && python3 scorer.py >> scorer.log 2>&1
+5,20,35,50 * * * * python3 news.py >> news.log 2>&1
+25 * * * * python3 stock_picks.py >> stock_picks.log 2>&1
 ```
 
 ## ibkr/ — paper trading execution (manual, not automated)
@@ -112,8 +123,8 @@ Optional services need their own setup first: Osiris (`~/osiris-src`, see the pa
 
 - **`install.sh`** — renders the templates below for this machine into `deploy/build/` (gitignored); `--apply` installs them (backs up the current crontab first). Services are installed but not enabled.
 - **`systemd/ibgateway.service`** — runs IB Gateway headless via IBC (`~/ibc`, not in git: its config holds broker login).
-- **`crontab.txt`** — crontab template: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, hourly `macro_fetch.py` (:17), hourly logrotate (:40).
-- **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24), God's Eye View (Vite, port 4173) and the three continuous pollers. After `install.sh --apply`: `systemctl --user enable --now <name>`.
+- **`crontab.txt`** — crontab template: 15-min `poller.py`→`scorer.py` and `polymarket_odds.py`→`alerts.py`, 15-min `news.py` (:05/:20/:35/:50), hourly `stock_picks.py` (:25), hourly `macro_fetch.py` (:17), hourly logrotate (:40).
+- **`systemd/*.service`** — user services for Osiris (`next start -p 3000`, Node 24), God's Eye View (Vite, port 4173), the dashboard (`dashboard.service`, 127.0.0.1:8050) and the three continuous pollers. After `install.sh --apply`: `systemctl --user enable --now <name>`.
 - **`logrotate/pipeline.conf`** — weekly or >10 MB rotation (8 kept, compressed, copytruncate) for the collector and pipeline logs; run by the crontab line above with a user state file.
 - **`start-wsl-ibgateway.vbs`** — Windows login launcher (copy into `shell:startup`). Starts the Ubuntu WSL distro hidden and holds it open with `sleep infinity`, so systemd (linger on) brings up cron, IB Gateway, Osiris and the pollers without a terminal open and WSL never idle-shuts-down. It cannot prevent Windows itself from sleeping.
 - **`osiris/osiris-local.patch`** — local changes to the [Osiris](https://github.com/aiacos/osiris) checkout: Gulf/Hormuz place names in the `/api/gdelt` geo-dictionary (without these, Gulf stories never reach the poller) and, on `/api/flights`, a User-Agent plus a 250 NM radius cap (adsb.lol's limit; larger radii now return 403 and the feed silently went to 0 aircraft on 2026-11-10) and four Gulf/Hormuz tiles covering the jets bounding box. Apply with `git -C ~/osiris-src apply deploy/osiris/osiris-local.patch`, then `npx next build` and restart `osiris.service`.

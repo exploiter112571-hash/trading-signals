@@ -1,0 +1,13 @@
+[Unit]
+Description=pipeline dashboard (read-only web UI on 127.0.0.1:8050; phone access via tailscale serve)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PIPELINE_DIR@
+ExecStart=@PYTHON@ @PIPELINE_DIR@/dashboard/server.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
